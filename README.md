@@ -86,3 +86,7 @@ EXPO_PUBLIC_ADA_WALLET_ADDRESS=
 - **Balance stays at zero**: Verify `EXPO_PUBLIC_ADA_WALLET_ADDRESS` and the Hydra endpoint (`getBalance` URL) point to a live node returning `totalInL1/totalInL2`.
 - **Missing env values**: Expo will start but Firebase/Auth calls will fail; confirm `.env` is loaded and keys start with `EXPO_PUBLIC_`.
 - **SVG assets not showing**: Ensure `metro.config.js` is intact and assets are imported with `require`/`@/assets/images/...`.
+
+## License
+
+The project's original source code is licensed under the [Apache License 2.0](LICENSE), consistent with the Project Catalyst 1200128 open-source commitment. See [NOTICE](NOTICE) for attribution and scope. Third-party dependencies, bundled third-party assets and files with separate licence notices retain their respective licences.
