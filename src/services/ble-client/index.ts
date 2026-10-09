@@ -2,6 +2,8 @@ import { Alert, PermissionsAndroid, Platform } from "react-native";
 import { BleManager } from "react-native-ble-plx";
 import BluetoothStateManager from "react-native-bluetooth-state-manager";
 import { Buffer } from "buffer";
+import { BLE } from "@/types/payment-contract";
+import type { BleValues } from "@/services/payment-flow";
 
 export class BleClient {
   // Properties
@@ -65,8 +67,8 @@ export class BleClient {
     return false;
   }
 
-  // Method to get the full name
-  async scan(name: string, serviceOptions: any): Promise<any> {
+  /** Scans for the terminal, reads value1..4 (read-only, UTF-8) and disconnects. */
+  async scan(): Promise<BleValues> {
     return new Promise((resolve, reject) => {
       this.manager.startDeviceScan(null, null, (error: any, device: any) => {
         // console.log("Scanning...");
@@ -79,7 +81,7 @@ export class BleClient {
             this.manager.stopDeviceScan();
             BluetoothStateManager.requestToEnable()
               .then((result) => {
-                this.scan(name, serviceOptions);
+                this.scan();
               })
               .catch((error) => {
                 console.log(error.message);
@@ -92,7 +94,7 @@ export class BleClient {
           reject(error.message);
         } else {
           if (
-            device?.name === name &&
+            device?.name === BLE.DEVICE_NAME &&
             this.calculateDistance(-59, 2, device.rssi) <= 0.05
           ) {
             console.log(this.calculateDistance(-59, 2, device.rssi));
@@ -102,53 +104,25 @@ export class BleClient {
             device
               .connect()
               .then(async (device: any) => {
-                // * Dicover all services
                 try {
                   await device.discoverAllServicesAndCharacteristics();
-
-                  // * Read address characteristic
-                  const value1Characteristic =
-                    await device.readCharacteristicForService(
-                      serviceOptions.SERVICE_UUID,
-                      serviceOptions.VALUE1_CHARACTERISTIC_UUID
+                  const read = async (uuid: string) => {
+                    const c = await device.readCharacteristicForService(
+                      BLE.SERVICE_UUID,
+                      uuid
                     );
-
-                  // * Read value characteristic
-                  const value2Characteristic =
-                    await device.readCharacteristicForService(
-                      serviceOptions.SERVICE_UUID,
-                      serviceOptions.VALUE2_CHARACTERISTIC_UUID
-                    );
-
-                  // * Read value characteristic
-                  const value3Characteristic =
-                    await device.readCharacteristicForService(
-                      serviceOptions.SERVICE_UUID,
-                      serviceOptions.VALUE3_CHARACTERISTIC_UUID
-                    );
-
-                  // * Convert to base64
-                  const value1 = atob(value1Characteristic.value);
-                  const value2 = atob(value2Characteristic.value);
-                  const value3 = atob(value3Characteristic.value);
-
-                  console.log(
-                    "\n [RECEIVED CHARACTERISTICS]",
-                    value1Characteristic,
-                    value2Characteristic,
-                    value1,
-                    value2,
-                    value3
-                  );
-
-                  // * Disconnect
-                  // if (device.isConnected()) device.cancelConnection();
-                  resolve({
-                    value1,
-                    value2,
-                    value3,
-                    device,
-                  });
+                    return Buffer.from(c.value ?? "", "base64").toString("utf8");
+                  };
+                  const values: BleValues = {
+                    value1: await read(BLE.MERCHANT_ADDRESS),
+                    value2: await read(BLE.AMOUNT_BASE_UNITS),
+                    value3: await read(BLE.ASSET_UNIT),
+                    value4: await read(BLE.PAYMENT_ID),
+                  };
+                  console.log("\n [RECEIVED CHARACTERISTICS]", values);
+                  // * Nothing is written back: the payer authorizes through the backend API
+                  await device.cancelConnection().catch(() => {});
+                  resolve(values);
                 } catch (error) {
                   reject(error);
                 }
@@ -162,49 +136,4 @@ export class BleClient {
       });
     });
   }
-
-  writeToCharacteristic = async (
-    device: any,
-    SERVICE_UUID: string,
-    WRITE_CHAR_UUID: string,
-    message: string
-  ) => {
-    if (!device) return;
-
-    try {
-      const services = await device.services();
-      for (const service of services) {
-        if (service.uuid.toLowerCase() === SERVICE_UUID.toLowerCase()) {
-          const characteristics = await service.characteristics();
-
-          characteristics.forEach((char: any) => {
-            console.log("\n\n\n===========================");
-            console.log("Name:", char);
-            console.log("UUID:", char.uuid);
-            console.log("Properties:", char.properties); // 👈 Asegúrate que incluya 'WriteWithResponse'
-            console.log("===========================\n\n\n");
-          });
-
-          const char = characteristics.find(
-            (c: any) => c.uuid.toLowerCase() === WRITE_CHAR_UUID.toLowerCase()
-          );
-
-          if (char) {
-            const base64Data = Buffer.from(message, "utf8").toString("base64");
-
-            await device.writeCharacteristicWithResponseForService(
-              SERVICE_UUID,
-              WRITE_CHAR_UUID,
-              base64Data
-            );
-            console.log("✅ Data written:", message);
-          } else {
-            console.warn("❌ Write characteristic not found");
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Write failed:", err);
-    }
-  };
 }

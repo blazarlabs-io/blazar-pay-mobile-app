@@ -30,9 +30,10 @@ EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID=
 EXPO_PUBLIC_LIVE_COIN_WATCH_API_KEY=
 EXPO_PUBLIC_ADMIN_WALLET_ADDRESS=
 EXPO_PUBLIC_ADA_WALLET_ADDRESS=
-# Optional: Hydra/TxPipe endpoint used by NFC payment flow drafts
-# EXPO_PUBLIC_TXPIPE_API_URL=
+# Required: Hydra Pay backend base URL, e.g. https://<host>. No default; without it payments and balances are disabled.
+EXPO_PUBLIC_API_URL=
 ```
+`EXPO_PUBLIC_ADA_WALLET_ADDRESS` must be the address of the backend `Account` linked to the Firebase user who signs in. Every backend call sends that user's Firebase ID token as `Authorization: Bearer`.
 
 ## Installing & Running Locally
 - Install dependencies: `npm install`
@@ -60,13 +61,13 @@ EXPO_PUBLIC_ADA_WALLET_ADDRESS=
 - **Navigation**: `src/app/_layout.tsx` sets the root Stack with `(auth)` and `(private)` groups. Themes adapt via `useColorScheme`.
 - **Providers**: `src/context/Providers.tsx` wraps the app with `AuthProvider`, `WalletProvider`, and `ExchangeProvider` so screens can consume `useAuth`, `useWallet`, and `useExchange`.
 - **Auth & Data**: `AuthProvider` listens to `onAuthStateChanged` and routes authenticated users to `/home`. Firestore accessors live in `src/lib/firebase/services/db`.
-- **Wallet state**: `WalletProvider` pulls Hydra balances via an HTTP endpoint (currently `http://192.168.18.4:5000/query-funds?address=...` placeholder) and subscribes to user Firestore docs. Update that base URL to your Hydra node/ngrok endpoint for live balances.
-- **Payments (BLE/NFC)**: `NfcScreen` scans for BLE terminals (`DEVICE_NAME` default `Hydra TERM`), reads payment request characteristics, and responds by writing the user ADA address. Characteristic UUIDs are defined inline; adjust for your hardware as needed.
+- **Wallet state**: `WalletProvider` calls `${EXPO_PUBLIC_API_URL}/query-funds?address=...` (`src/services/api.ts`). The balances shown as spendable are `payableInL2`; L1 funds are listed separately and are not payable. It also subscribes to user Firestore docs.
+- **Payments (BLE)**: `NfcScreen` scans for the `Hydra TERM` terminal and reads four read-only characteristics: merchant address, amount in base units, asset unit and `paymentId` (UUIDs in `src/types/payment-contract.ts`). It fetches `GET /payments/:id`, aborts if the terminal values differ, and on "Pay" calls `POST /payments/:id/authorize`, then polls until `confirmed`, `failed` or `expired`. The success screen is shown only for `confirmed`. Nothing is written to the terminal.
 - **Pricing**: `getAdaUsdTicker` and `getBtcUsdTicker` call LiveCoinWatch using `EXPO_PUBLIC_LIVE_COIN_WATCH_API_KEY`.
 - **Styling**: Tailwind classes via NativeWind; fonts loaded in `_layout` (`SpaceMono`). Metro is configured to transform SVGs (`metro.config.js`).
 
 ## Quality & Tooling
-- Tests: `npm test` (Jest + jest-expo). Snapshot example lives in `src/components/__tests__`.
+- Tests: `npx jest --ci` (Jest + jest-expo; `npm test` runs in watch mode). Payment logic tests live in `src/services/__tests__`.
 - Lint: `npm run lint` (Expo lint preset).
 - Formatting: Prettier + Tailwind plugin (run via your editor/`npx prettier`).
 
@@ -83,7 +84,7 @@ EXPO_PUBLIC_ADA_WALLET_ADDRESS=
 
 ## Common Troubleshooting
 - **BLE scanning fails / powered off**: The BLE client requests permissions and prompts to enable Bluetooth; ensure location/BLE permissions are granted on Android 12+.
-- **Balance stays at zero**: Verify `EXPO_PUBLIC_ADA_WALLET_ADDRESS` and the Hydra endpoint (`getBalance` URL) point to a live node returning `totalInL1/totalInL2`.
+- **Balance stays at zero**: Verify `EXPO_PUBLIC_ADA_WALLET_ADDRESS` and `EXPO_PUBLIC_API_URL`, that you are signed in, and that the backend returns `payableInL2`.
 - **Missing env values**: Expo will start but Firebase/Auth calls will fail; confirm `.env` is loaded and keys start with `EXPO_PUBLIC_`.
 - **SVG assets not showing**: Ensure `metro.config.js` is intact and assets are imported with `require`/`@/assets/images/...`.
 
