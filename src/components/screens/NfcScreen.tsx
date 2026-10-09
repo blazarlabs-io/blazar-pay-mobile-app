@@ -67,12 +67,7 @@ export const NfcScreen = () => {
     }
     router.push({
       pathname: "/payment-success",
-      params: {
-        amountBaseUnits: outcome.payment.amountBaseUnits,
-        assetUnit: outcome.payment.assetUnit,
-        hydraTxId: outcome.payment.hydraTxId ?? "",
-        snapshotNumber: String(outcome.payment.snapshotNumber ?? ""),
-      },
+      params: { paymentId: outcome.payment.paymentId }, // the screen re-reads it from the backend
     });
   };
 
