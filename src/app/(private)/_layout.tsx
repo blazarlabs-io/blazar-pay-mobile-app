@@ -21,6 +21,10 @@ export default function PrivateLayout() {
         options={{ headerShown: false }}
       />
       <Stack.Screen name="payment-success" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="deposit-btc"
+        options={{ title: "Deposit BTC", headerTransparent: true }}
+      />
     </Stack>
   );
 }

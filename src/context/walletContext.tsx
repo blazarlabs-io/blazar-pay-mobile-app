@@ -2,12 +2,14 @@ import { useWalletRegistration } from "@/hooks/useWalletRegistration";
 import { db } from "@/lib/firebase/client";
 import { getAdaUsdTicker, getBtcUsdTicker } from "@/services/coinwatch/client";
 import { doc, onSnapshot } from "firebase/firestore";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "./authContext";
 import { USERS } from "@/lib/firebase/services/constants";
 import { ASSET_UNITS } from "@/constants/assetUnits";
 import { Transaction } from "@/types/db";
-import { queryFunds } from "@/services/api";
+import { getDeposit, queryFunds } from "@/services/api";
+import { Deposit, depositTimeline } from "@/services/deposit-flow";
 import { ASSETS, AssetUnit, formatBaseUnits } from "@/types/payment-contract";
 
 export type CurrencyType = "ADA" | "USDM" | "WBTC";
@@ -27,6 +29,8 @@ interface ContextInterface {
   selectedCurrency: CurrencyType;
   updateSelectedCurrency: (currency: CurrencyType) => void;
   transactions: Transaction[];
+  btcDeposit: Deposit | null; // last BTC deposit started on this device (the backend has no list endpoint)
+  trackBtcDeposit: (d: Deposit | null) => void;
 }
 
 const WalletContext = createContext<ContextInterface>({
@@ -44,6 +48,8 @@ const WalletContext = createContext<ContextInterface>({
   selectedCurrency: "ADA",
   updateSelectedCurrency: () => {},
   transactions: [],
+  btcDeposit: null,
+  trackBtcDeposit: () => {},
 });
 
 export const useWallet = () => {
@@ -74,6 +80,20 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const [usdmConversionRate, setUsdmConversionRate] = useState<number>(1.0);
   const [wbtcConversionRate, setWbtcConversionRate] = useState<number>(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [btcDeposit, setBtcDeposit] = useState<Deposit | null>(null);
+  const btcDepositRef = useRef<Deposit | null>(null); // latest value for callbacks held by intervals
+  const depositKey = user ? `btcDeposit:${user.uid}` : null;
+
+  // * GET /deposits/:id may omit the createTx2 instructions (btc) returned at create: keep them.
+  const trackBtcDeposit = (d: Deposit | null) => {
+    const prev = btcDepositRef.current;
+    const next = d && prev?.depositId === d.depositId ? { ...prev, ...d, btc: d.btc ?? prev.btc } : d;
+    btcDepositRef.current = next;
+    setBtcDeposit(next);
+    if (depositKey) {
+      (next ? AsyncStorage.setItem(depositKey, JSON.stringify(next)) : AsyncStorage.removeItem(depositKey)).catch(console.log);
+    }
+  };
 
   const updateSelectedCurrency = (currency: CurrencyType) => {
     setSelectedCurrency(currency);
@@ -132,6 +152,26 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     getBalance();
   }, [adaAddress, user]);
 
+  // * Restore the tracked BTC deposit for this user and refresh it once
+  useEffect(() => {
+    btcDepositRef.current = null;
+    setBtcDeposit(null);
+    if (!depositKey) return;
+    AsyncStorage.getItem(depositKey)
+      .then((s) => {
+        const d: Deposit | null = s ? JSON.parse(s) : null;
+        btcDepositRef.current = d;
+        setBtcDeposit(d);
+        if (d && !depositTimeline(d).final) return getDeposit(d.depositId).then(trackBtcDeposit);
+      })
+      .catch(console.log);
+  }, [depositKey]);
+
+  // * A deposit that became available changes the payable balance
+  useEffect(() => {
+    if (btcDeposit?.state === "available") getBalance();
+  }, [btcDeposit?.state]);
+
   useEffect(() => {
     let unsubsUserData: any = null;
     if (user && db) {
@@ -165,6 +205,8 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         selectedCurrency,
         updateSelectedCurrency,
         transactions,
+        btcDeposit,
+        trackBtcDeposit,
       }}
     >
       {children}

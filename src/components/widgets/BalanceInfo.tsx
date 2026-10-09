@@ -1,9 +1,12 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 import { Icons } from "../core";
 import { useWallet } from "@/context/walletContext";
 import { useEffect } from "react";
 import { ASSETS, AssetUnit, formatBaseUnits } from "@/types/payment-contract";
+import { ASSET_UNITS } from "@/constants/assetUnits";
+import { DEPOSIT_LABEL, inProgressSats } from "@/services/deposit-flow";
 
 export const BalanceInfo = () => {
   const {
@@ -14,7 +17,9 @@ export const BalanceInfo = () => {
     usdmConversionRate,
     wbtcConversionRate,
     l1Balances,
+    btcDeposit,
   } = useWallet();
+  const pendingSats = inProgressSats(btcDeposit);
 
   useEffect(() => {
     console.log("adaBalance", adaBalance);
@@ -103,6 +108,15 @@ export const BalanceInfo = () => {
         .map((u) => `${formatBaseUnits(l1Balances[u] ?? "0", ASSETS[u].decimals)} ${ASSETS[u].symbol}`)
         .join(" · ")}`}
     </Text>
+    {/* * BTC on its way through the bridge: never part of the payable balance above */}
+    {pendingSats && btcDeposit && (
+      <Text className="mt-1 px-6 text-xs opacity-50">
+        {`BTC deposit in progress, not payable yet: ${formatBaseUnits(pendingSats, ASSETS[ASSET_UNITS.wbtc].decimals)} BTC (${DEPOSIT_LABEL[btcDeposit.state] ?? btcDeposit.state})`}
+      </Text>
+    )}
+    <TouchableOpacity onPress={() => router.push("/deposit-btc")} className="mt-2 px-6">
+      <Text className="text-sm font-bold underline">Deposit BTC (testnet bridge)</Text>
+    </TouchableOpacity>
     </>
   );
 };

@@ -1,5 +1,6 @@
 import { auth } from "@/lib/firebase/client";
 import type { Payment } from "@/types/payment-contract";
+import type { Deposit } from "@/services/deposit-flow";
 
 // Required at build time; no LAN or hosted fallback.
 const API_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "");
@@ -15,7 +16,7 @@ export type QueryFunds = {
   payableInL2?: Record<string, string>; // base units; absent on a backend without the M3 change
 };
 
-async function call<T>(path: string, method: "GET" | "POST" = "GET"): Promise<T> {
+async function call<T>(path: string, method: "GET" | "POST" = "GET", body: object = {}): Promise<T> {
   if (!API_URL) throw new Error("This build has no backend configured (EXPO_PUBLIC_API_URL is missing).");
   const user = auth.currentUser;
   if (!user) throw new Error("You are signed out. Sign in to pay.");
@@ -25,11 +26,12 @@ async function call<T>(path: string, method: "GET" | "POST" = "GET"): Promise<T>
       Authorization: `Bearer ${await user.getIdToken()}`,
       "Content-Type": "application/json",
     },
-    body: method === "POST" ? "{}" : undefined,
+    body: method === "POST" ? JSON.stringify(body) : undefined,
   });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(`Backend error ${res.status}${body?.error ? `: ${body.error}` : ""}`);
-  return body as T;
+  const json = await res.json().catch(() => null);
+  const reason = [json?.error, json?.reason].filter(Boolean).join(": "); // 422 on /deposits carries a reason
+  if (!res.ok) throw new Error(`Backend error ${res.status}${reason ? `: ${reason}` : ""}`);
+  return json as T;
 }
 
 export const getPayment = (paymentId: string) =>
@@ -41,3 +43,14 @@ export const authorize = (paymentId: string) =>
 
 export const queryFunds = (address: string) =>
   call<QueryFunds>(`/query-funds?address=${encodeURIComponent(address)}`);
+
+/** BTC deposit via WanBridge testnet. Sats travel as integer strings. */
+export const createBtcDeposit = (amountSats: string) =>
+  call<Deposit>("/deposits/btc", "POST", { amountSats });
+
+/** 422 with the reason when the tx does not pay the deposit's toAccount + memo. */
+export const submitBtcTx = (depositId: string, btcTxid: string) =>
+  call<Deposit>(`/deposits/${encodeURIComponent(depositId)}/btc-tx`, "POST", { btcTxid });
+
+export const getDeposit = (depositId: string) =>
+  call<Deposit>(`/deposits/${encodeURIComponent(depositId)}`);

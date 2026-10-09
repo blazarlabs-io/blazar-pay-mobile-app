@@ -12,3 +12,4 @@ export { ExchangeScreen } from "./ExchangeScreen";
 export { StepOne } from "./register-wallet/StepOne";
 export { StepTwo } from "./register-wallet/StepTwo";
 export { PaymentSuccessScreen } from "./PaymentSuccessScreen";
+export { DepositBtcScreen } from "./DepositBtcScreen";
