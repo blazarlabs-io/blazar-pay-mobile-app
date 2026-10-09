@@ -5,8 +5,20 @@ const TXID = "6633762d" + "ab".repeat(28);
 const dep = (state: DepositState, over: Partial<Deposit> = {}): Deposit => ({
   depositId: "6f1c1b7e-0000-4000-8000-000000000002",
   state,
+  userAddress: "addr_test1",
+  assetUnit: "d2a8.425443",
   expiresAt: "2026-10-10T12:30:00.000Z",
-  amountSats: "50000",
+  requestedBaseUnits: "50000",
+  receivedBaseUnits: null,
+  btc: { toAccount: "tb1p", valueSats: "50000", memo: "07" },
+  btcTxid: null,
+  btcVout: null,
+  l1Ref: null,
+  fundsTxId: null,
+  depositTxId: null,
+  error: null,
+  createdAt: "2026-10-10T12:00:00.000Z",
+  updatedAt: "2026-10-10T12:00:00.000Z",
   ...over,
 });
 const statuses = (d: Deposit) => depositTimeline(d).steps.map((s) => s.status);
@@ -68,12 +80,12 @@ describe("depositTimeline", () => {
     expect(t.problem).toBe("Failed: Refund");
     expect(t.steps.map((s) => s.status)).toEqual(["done", "todo", "todo", "todo", "todo"]);
 
-    const na = depositTimeline(dep("needs_attention", { btcTxid: TXID, redeemTxHash: "b1".repeat(32), depositTxId: "c2".repeat(32), error: "commit failed 3 times" }));
+    const na = depositTimeline(dep("needs_attention", { btcTxid: TXID, l1Ref: "b1".repeat(32) + "#0", fundsTxId: "d3".repeat(32), depositTxId: "c2".repeat(32), error: "commit failed 3 times" }));
     expect(na.problem).toBe("Needs attention: commit failed 3 times");
     expect(na.steps.map((s) => s.status)).toEqual(["done", "done", "done", "todo", "todo"]);
 
     expect(depositTimeline(dep("expired")).problem).toBe("Expired: the backend gave no reason");
-    const odd = depositTimeline(dep("credited" as DepositState, { btcTxid: TXID, redeemTxHash: "b1".repeat(32) }));
+    const odd = depositTimeline(dep("credited" as DepositState, { btcTxid: TXID, l1Ref: "b1".repeat(32) + "#0" }));
     expect(odd.problem).toMatch(/^Unknown state "credited"/);
     expect(odd.final).toBe(false);
     expect(odd.steps[4].status).toBe("todo");
@@ -87,7 +99,7 @@ describe("inProgressSats", () => {
     expect(inProgressSats(dep("bridge_processing"))).toBe("50000");
     expect(inProgressSats(dep("needs_attention"))).toBe("50000");
     expect(inProgressSats(dep("committing", { receivedBaseUnits: "49900" }))).toBe("49900");
-    expect(inProgressSats(dep("btc_sent", { amountSats: undefined, btc: { toAccount: "tb1p", valueSats: "60000", memo: "07" } }))).toBe("60000");
+    expect(inProgressSats(dep("btc_sent", { requestedBaseUnits: "60000" }))).toBe("60000");
   });
 });
 

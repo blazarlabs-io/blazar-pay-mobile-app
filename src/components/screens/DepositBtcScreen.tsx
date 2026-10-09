@@ -99,8 +99,7 @@ export const DepositBtcScreen = () => {
   const create = () =>
     run(async () => {
       const d = await createBtcDeposit(sats!);
-      if (!d.btc) throw new Error("The backend returned no BTC payment instructions.");
-      trackBtcDeposit({ amountSats: sats!, ...d });
+      trackBtcDeposit(d);
       setTxid("");
     });
 
@@ -164,7 +163,7 @@ export const DepositBtcScreen = () => {
         )}
 
         {/* * 2. Instructions for the external wallet, then the txid */}
-        {deposit?.state === "created" && deposit.btc && (
+        {deposit?.state === "created" && (
           <>
             <ThemedText type="subtitle">Send exactly</ThemedText>
             <ThemedText type="title" className="mt-2">
@@ -234,9 +233,6 @@ export const DepositBtcScreen = () => {
             <Button variant="outline" label="Start over" className="mt-3" disabled={busy} onPress={startOver} />
           </>
         )}
-        {deposit?.state === "created" && !deposit.btc && (
-          <Button variant="outline" label="Start over" onPress={startOver} />
-        )}
 
         {/* * 3. Status timeline (backend states only) */}
         {deposit && timeline && deposit.state !== "created" && (
@@ -262,19 +258,19 @@ export const DepositBtcScreen = () => {
             )}
             {deposit.state === "available" && (
               <ThemedText type="defaultSemiBold" className="mt-4">
-                {`${formatBaseUnits(deposit.receivedBaseUnits ?? deposit.amountSats ?? "0", DECIMALS)} BTC is payable in Hydra.`}
+                {`${formatBaseUnits(deposit.receivedBaseUnits ?? deposit.requestedBaseUnits, DECIMALS)} BTC is payable in Hydra.`}
               </ThemedText>
             )}
             <View className="mt-4">
-              {!!deposit.amountSats && (
-                <ThemedText className="opacity-70">{`Requested: ${formatBaseUnits(deposit.amountSats, DECIMALS)} BTC (${deposit.amountSats} sats)`}</ThemedText>
+              {!!deposit.requestedBaseUnits && (
+                <ThemedText className="opacity-70">{`Requested: ${formatBaseUnits(deposit.requestedBaseUnits, DECIMALS)} BTC (${deposit.requestedBaseUnits} sats)`}</ThemedText>
               )}
               {!!deposit.receivedBaseUnits && (
                 <ThemedText className="opacity-70">{`Received on Cardano: ${formatBaseUnits(deposit.receivedBaseUnits, DECIMALS)} BTC (${deposit.receivedBaseUnits} sats, after bridge fee)`}</ThemedText>
               )}
               {!!deposit.btcTxid && <ThemedText selectable className="opacity-70">{`BTC tx: ${deposit.btcTxid}`}</ThemedText>}
-              {!!deposit.redeemTxHash && (
-                <ThemedText selectable className="opacity-70">{`Cardano tx: ${deposit.redeemTxHash}#${deposit.redeemIndex ?? "?"}`}</ThemedText>
+              {!!deposit.l1Ref && (
+                <ThemedText selectable className="opacity-70">{`Cardano tx: ${deposit.l1Ref}`}</ThemedText>
               )}
               {!!deposit.depositTxId && (
                 <ThemedText selectable className="opacity-70">{`Hydra deposit tx: ${deposit.depositTxId}`}</ThemedText>

@@ -84,10 +84,9 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const btcDepositRef = useRef<Deposit | null>(null); // latest value for callbacks held by intervals
   const depositKey = user ? `btcDeposit:${user.uid}` : null;
 
-  // * GET /deposits/:id may omit the createTx2 instructions (btc) returned at create: keep them.
   const trackBtcDeposit = (d: Deposit | null) => {
     const prev = btcDepositRef.current;
-    const next = d && prev?.depositId === d.depositId ? { ...prev, ...d, btc: d.btc ?? prev.btc } : d;
+    const next = d && prev?.depositId === d.depositId ? { ...prev, ...d } : d;
     btcDepositRef.current = next;
     setBtcDeposit(next);
     if (depositKey) {

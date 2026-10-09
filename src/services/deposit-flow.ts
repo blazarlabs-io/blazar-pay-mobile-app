@@ -11,19 +11,24 @@ export type DepositState =
   | "expired"
   | "needs_attention";
 
-/** POST /deposits/btc returns depositId, state, btc, expiresAt; GET /deposits/:id the rest (base units = sats, as strings). */
+/** The backend Deposit (shared/payment-contract.ts), every route returns all fields. Base units = sats, as strings. */
 export type Deposit = {
   depositId: string;
+  userAddress: string;
+  assetUnit: string;
   state: DepositState;
+  requestedBaseUnits: string; // sats to send
+  receivedBaseUnits: string | null; // measured on L1
+  btc: { toAccount: string; valueSats: string; memo: string }; // always set
   expiresAt: string;
-  amountSats?: string;
-  btc?: { toAccount: string; valueSats: string; memo: string } | null;
-  receivedBaseUnits?: string | null;
-  btcTxid?: string | null;
-  redeemTxHash?: string | null;
-  redeemIndex?: number | null;
-  depositTxId?: string | null;
-  error?: string | null;
+  btcTxid: string | null;
+  btcVout: number | null;
+  l1Ref: string | null; // "redeemHash#ix"
+  fundsTxId: string | null; // L1 funds tx
+  depositTxId: string | null; // Hydra deposit tx
+  error: string | null; // error code
+  createdAt: string;
+  updatedAt: string;
 };
 
 export const DEPOSIT_LABEL: Record<DepositState, string> = {
@@ -50,8 +55,8 @@ export type Timeline = {
 /** Timeline for the status screen. "Available" is done only when the backend says `available`. */
 export function depositTimeline(d: Deposit): Timeline {
   const known = PROGRESS.includes(d.state);
-  // failed / expired / needs_attention: tick only what the record proves (txid = BTC sent, redeem tx = on L1).
-  const reached = known ? PROGRESS.indexOf(d.state) : d.redeemTxHash ? 3 : d.btcTxid ? 1 : 0;
+  // failed / expired / needs_attention: tick only what the record proves (txid = BTC sent, l1Ref = on L1).
+  const reached = known ? PROGRESS.indexOf(d.state) : d.l1Ref ? 3 : d.btcTxid ? 1 : 0;
   const steps = PROGRESS.slice(1).map((state, i) => {
     const n = i + 1;
     let status: StepStatus = "todo";
@@ -70,7 +75,7 @@ export function depositTimeline(d: Deposit): Timeline {
 /** Sats on the way (sent, not yet payable), or null. Payable BTC comes only from query-funds `payableInL2`. */
 export function inProgressSats(d: Deposit | null): string | null {
   if (!d || ["created", "available", "failed", "expired"].includes(d.state)) return null;
-  return d.receivedBaseUnits ?? d.amountSats ?? d.btc?.valueSats ?? null;
+  return d.receivedBaseUnits ?? d.requestedBaseUnits;
 }
 
 /** BTC txid as Electrum shows it: 64 hex. Returns it lowercased, or null. */

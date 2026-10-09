@@ -29,8 +29,8 @@ async function call<T>(path: string, method: "GET" | "POST" = "GET", body: objec
     body: method === "POST" ? JSON.stringify(body) : undefined,
   });
   const json = await res.json().catch(() => null);
-  const reason = [json?.error, json?.reason].filter(Boolean).join(": "); // 422 on /deposits carries a reason
-  if (!res.ok) throw new Error(`Backend error ${res.status}${reason ? `: ${reason}` : ""}`);
+  // Errors are {"error":"CODE"}; a 422 on /deposits/:id/btc-tx also carries the updated "deposit".
+  if (!res.ok) throw new Error(`Backend error ${res.status}${json?.error ? `: ${json.error}` : ""}`);
   return json as T;
 }
 
@@ -48,7 +48,7 @@ export const queryFunds = (address: string) =>
 export const createBtcDeposit = (amountSats: string) =>
   call<Deposit>("/deposits/btc", "POST", { amountSats });
 
-/** 422 with the reason when the tx does not pay the deposit's toAccount + memo. */
+/** 422 {error: MEMO_MISSING | VALUE_MISMATCH | MULTIPLE_OUTPUTS_TO_DEPOSIT_ADDRESS | NO_OUTPUT_TO_DEPOSIT_ADDRESS | BTC_TX_NOT_FOUND} when the tx does not pay the deposit's toAccount + memo. */
 export const submitBtcTx = (depositId: string, btcTxid: string) =>
   call<Deposit>(`/deposits/${encodeURIComponent(depositId)}/btc-tx`, "POST", { btcTxid });
 
