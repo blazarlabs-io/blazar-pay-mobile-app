@@ -56,13 +56,15 @@ export const PaymentSuccessScreen = () => {
     <SafeLayout>
       <View className="flex-1 flex-col items-center justify-between">
         <View className="mt-20 flex items-center justify-center">
-          <Image
-            source={require("@/assets/images/pay.png")}
-            style={{
-              width: 220,
-              height: 220,
-            }}
-          />
+          {payment && ( // the success illustration only for a confirmed payment
+            <Image
+              source={require("@/assets/images/pay.png")}
+              style={{
+                width: 220,
+                height: 220,
+              }}
+            />
+          )}
           <ThemedText type="subtitle" className="">
             Payment
           </ThemedText>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Text } from "react-native";
+import { Image, Text } from "react-native";
 import renderer, { act, ReactTestRenderer } from "react-test-renderer";
 import type { Payment } from "@/types/payment-contract";
 import { PaymentSuccessScreen } from "@/components/screens/PaymentSuccessScreen";
@@ -45,12 +45,15 @@ const payment = (over: Partial<Payment>): Payment => ({
   ...over,
 });
 
+let images = 0; // success illustrations in the last render
+
 async function render(params: Record<string, string>): Promise<string> {
   mockParams = params;
   let tree: ReactTestRenderer;
   await act(async () => {
     tree = renderer.create(<PaymentSuccessScreen />);
   });
+  images = tree!.root.findAllByType(Image).length;
   const texts = tree!.root
     .findAllByType(Text)
     .map((t) => [t.props.children].flat().join(""));
@@ -89,6 +92,7 @@ describe("PaymentSuccessScreen", () => {
     const out = await render({ paymentId: ID });
     expect(out).not.toMatch(/successful/);
     expect(out).toMatch(/404/);
+    expect(images).toBe(0); // no success illustration on "not confirmed"
   });
 
   it("shows success with the backend amount only when the backend says confirmed", async () => {
@@ -103,5 +107,6 @@ describe("PaymentSuccessScreen", () => {
     expect(out).toMatch(/successful/);
     expect(out).toMatch(/1\.5 ADA/);
     expect(out).toMatch(/Snapshot: 7/);
+    expect(images).toBe(1);
   });
 });
