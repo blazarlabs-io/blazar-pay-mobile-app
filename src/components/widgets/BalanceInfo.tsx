@@ -8,6 +8,9 @@ import { ASSETS, AssetUnit, formatBaseUnits } from "@/types/payment-contract";
 import { ASSET_UNITS } from "@/constants/assetUnits";
 import { DEPOSIT_LABEL, inProgressSats } from "@/services/deposit-flow";
 
+// Price feed may be unavailable (no API key / offline): show a dash instead of $NaN.
+const usd = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "—");
+
 export const BalanceInfo = () => {
   const {
     adaBalance,
@@ -45,7 +48,7 @@ export const BalanceInfo = () => {
         colors={["#FFD5E9", "#8CE4F3"]}
       />
       <View className="flex flex-row items-center justify-start gap-x-2 px-6 pt-6">
-        <Text className="text-5xl font-black">{`$${(adaBalance * adaConversionRate + usdmBalance * usdmConversionRate + wbtcBalance * wbtcConversionRate).toFixed(2)}`}</Text>
+        <Text className="text-5xl font-black">{`$${usd(adaBalance * adaConversionRate + usdmBalance * usdmConversionRate + wbtcBalance * wbtcConversionRate)}`}</Text>
         <Text className="text-base font-black opacity-50">USD</Text>
       </View>
       <View className="px-6">
@@ -64,7 +67,7 @@ export const BalanceInfo = () => {
           </View>
           <View className="flex flex-row items-center justify-start gap-x-1 opacity-50">
             <Text className="text-xs font-normal">
-              ${(adaBalance * adaConversionRate).toFixed(2)}
+              ${usd(adaBalance * adaConversionRate)}
             </Text>
             <Text className="text-xs font-bold">USD</Text>
           </View>
@@ -80,7 +83,7 @@ export const BalanceInfo = () => {
           </View>
           <View className="flex flex-row items-center justify-end gap-x-1 opacity-50">
             <Text className="text-xs font-normal">
-              ${(usdmBalance * usdmConversionRate).toFixed(2)}
+              ${usd(usdmBalance * usdmConversionRate)}
             </Text>
             <Text className="text-xs font-bold">USD</Text>
           </View>
@@ -90,12 +93,12 @@ export const BalanceInfo = () => {
           <View className="flex flex-row items-center justify-start gap-x-1 pt-6">
             <Icons.Wbtc />
             <Text className="text-base font-bold">
-              {wbtcBalance.toFixed(6)}
+              {wbtcBalance.toFixed(8)}
             </Text>
           </View>
           <View className="flex flex-row items-center justify-end gap-x-1 opacity-50">
             <Text className="text-xs font-normal">
-              ${(wbtcBalance * wbtcConversionRate).toFixed(2)}
+              ${usd(wbtcBalance * wbtcConversionRate)}
             </Text>
             <Text className="text-xs font-bold">USD</Text>
           </View>
