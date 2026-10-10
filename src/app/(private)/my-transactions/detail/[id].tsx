@@ -1,11 +1,13 @@
 import { TransactionDetailScreen } from "@/components/screens";
 import { useLocalSearchParams } from "expo-router";
-import { transactions } from "@/data/transactionsTemplate";
+import { useWallet } from "@/context/walletContext";
 
 export default function DetailsScreen() {
   const { id } = useLocalSearchParams();
+  const { transactions } = useWallet();
 
-  const transaction = transactions.find((t) => t.id === id);
+  // ponytail: looked up by tx hash; a payer has one funds output per tx in practice
+  const transaction = transactions.find((t) => t.txHash === id);
 
   return <TransactionDetailScreen data={transaction} />;
 }

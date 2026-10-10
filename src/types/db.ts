@@ -30,7 +30,7 @@ export type UserData = {
 
 export type Transaction = {
   txHash: string;
-  oututIndex: number;
+  outputIndex: number;
   assets: {
     [key: string]: number;
   };
