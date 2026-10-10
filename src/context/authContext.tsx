@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUser(user);
-        router.push("/home");
+        router.replace("/home"); // not push: Back on Home must not reveal the sign-in screen
       } else {
         setUser(null);
       }
