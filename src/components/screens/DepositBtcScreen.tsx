@@ -258,7 +258,8 @@ export const DepositBtcScreen = () => {
             )}
             {deposit.state === "available" && (
               <ThemedText type="defaultSemiBold" className="mt-4">
-                {`${formatBaseUnits(deposit.receivedBaseUnits ?? deposit.requestedBaseUnits, DECIMALS)} BTC is payable in Hydra.`}
+                {/* past tense: later payments may spend these funds, the Home card shows what is payable now */}
+                {`${formatBaseUnits(deposit.receivedBaseUnits ?? deposit.requestedBaseUnits, DECIMALS)} BTC was credited to Hydra L2 and became payable.`}
               </ThemedText>
             )}
             <View className="mt-4">
@@ -270,10 +271,14 @@ export const DepositBtcScreen = () => {
               )}
               {!!deposit.btcTxid && <ThemedText selectable className="opacity-70">{`BTC tx: ${deposit.btcTxid}`}</ThemedText>}
               {!!deposit.l1Ref && (
-                <ThemedText selectable className="opacity-70">{`Cardano tx: ${deposit.l1Ref}`}</ThemedText>
+                <ThemedText selectable className="opacity-70">{`Cardano output (bridge): ${deposit.l1Ref}`}</ThemedText>
+              )}
+              {/* the funds UTxO keeps this tx hash in Hydra L2: it is the matching card under "My funds" */}
+              {!!deposit.fundsTxId && (
+                <ThemedText selectable className="opacity-70">{`Funds tx (L1, committed to Hydra): ${deposit.fundsTxId}`}</ThemedText>
               )}
               {!!deposit.depositTxId && (
-                <ThemedText selectable className="opacity-70">{`Hydra deposit tx: ${deposit.depositTxId}`}</ThemedText>
+                <ThemedText selectable className="opacity-70">{`Hydra commit tx (L1): ${deposit.depositTxId}`}</ThemedText>
               )}
             </View>
             {!final && (

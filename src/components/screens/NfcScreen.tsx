@@ -130,8 +130,8 @@ export const NfcScreen = () => {
               Buy fast and safely with our contactless payments.
             </ThemedText>
             <ThemedText type="default" className="mt-6 max-w-[90%] text-center">
-              Activating our contactless system allows you to pay with your
-              phone in any hydrapay compatible terminal.
+              Hold your phone near a HydraPay terminal. The app finds it over
+              Bluetooth (BLE).
             </ThemedText>
             <ActivityIndicator style={{ marginTop: 24 }} size="large" />
           </>
