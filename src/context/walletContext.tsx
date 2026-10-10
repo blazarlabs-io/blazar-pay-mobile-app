@@ -64,13 +64,14 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const { isRegistered } = useWalletRegistration();
   const { user } = useAuth();
 
-  const [isWalletRegistered, setIsWalletRegistered] = useState<boolean>(false);
   const [adminWalletAddress, setAdminWalletAddress] = useState<string>(
     process.env.EXPO_PUBLIC_ADMIN_WALLET_ADDRESS as string
   );
   const [adaAddress, setAdaAddress] = useState<string>(
     process.env.EXPO_PUBLIC_ADA_WALLET_ADDRESS as string
   );
+  // M3: the payer address comes from the build config, so a Firestore wallet doc is not required
+  const isWalletRegistered = isRegistered || !!adaAddress;
   const [adaBalance, setAdaBalance] = useState<number>(0.0);
   const [usdmBalance, setUsdmBalance] = useState<number>(0.0);
   const [wbtcBalance, setWbtcBalance] = useState<number>(0.0);
@@ -122,11 +123,6 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       console.log(error);
     }
   };
-
-  useEffect(() => {
-    setIsWalletRegistered(isRegistered);
-    console.log("isRegistered", isRegistered);
-  }, [isRegistered]);
 
   useEffect(() => {
     // * GET ADA TICKER

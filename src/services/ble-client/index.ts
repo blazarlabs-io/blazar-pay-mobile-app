@@ -5,6 +5,10 @@ import { Buffer } from "buffer";
 import { BLE } from "@/types/payment-contract";
 import type { BleValues } from "@/services/payment-flow";
 
+// ponytail: fixed 30 s scan window; make it configurable if real terminals need longer
+export const SCAN_TIMEOUT_MS = 30_000;
+export const NO_TERMINAL = "No terminal found nearby — move closer and retry.";
+
 export class BleClient {
   // Properties
   private manager: any;
@@ -67,13 +71,18 @@ export class BleClient {
     return false;
   }
 
-  /** Scans for the terminal, reads value1..4 (read-only, UTF-8) and disconnects. */
-  async scan(): Promise<BleValues> {
+  /** Scans for the terminal, reads value1..4 (read-only, UTF-8) and disconnects. Gives up after `timeoutMs` with no terminal in range. */
+  async scan(timeoutMs = SCAN_TIMEOUT_MS): Promise<BleValues> {
     return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.manager.stopDeviceScan();
+        reject(new Error(NO_TERMINAL));
+      }, timeoutMs);
       this.manager.startDeviceScan(null, null, (error: any, device: any) => {
         // console.log("Scanning...");
 
         if (error) {
+          clearTimeout(timer);
           // * Handle error (scanning will be stopped automatically)
           console.log("ERROR:", error.message);
           // * [BleError: BluetoothLE is powered off]
@@ -98,6 +107,7 @@ export class BleClient {
             this.calculateDistance(-59, 2, device.rssi) <= 0.05
           ) {
             console.log(this.calculateDistance(-59, 2, device.rssi));
+            clearTimeout(timer);
             // * Stop scanning as it's not necessary if you are scanning for one device
             this.manager.stopDeviceScan();
             // * Connect to the device

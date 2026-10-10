@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Image, Modal, useColorScheme, View, Text } from "react-native";
+import { ActivityIndicator, Image, Modal, useColorScheme, View, Text } from "react-native";
 import { BleClient } from "../../services/ble-client";
 import { Button, Icons, SafeLayout, ThemedText, ThemedView } from "../core";
 import { useWalletRegistration } from "@/hooks/useWalletRegistration";
@@ -133,6 +133,7 @@ export const NfcScreen = () => {
               Activating our contactless system allows you to pay with your
               phone in any hydrapay compatible terminal.
             </ThemedText>
+            <ActivityIndicator style={{ marginTop: 24 }} size="large" />
           </>
         )}
         {(view.step === "ready" || view.step === "paying") && (
