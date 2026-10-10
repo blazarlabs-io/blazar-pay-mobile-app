@@ -1,10 +1,6 @@
 import { ScrollView, useColorScheme, View } from "react-native";
 import { SafeLayout } from "../core";
-import {
-  ActionsSection,
-  BenefitsSection,
-  MyTransactionsSection,
-} from "../sections";
+import { ActionsSection, MyTransactionsSection } from "../sections";
 import { BalanceInfo } from "../widgets";
 import { StatusBar } from "expo-status-bar";
 import { Colors } from "@/constants/Colors";
@@ -27,9 +23,7 @@ export const HomeScreen = () => {
         <View className="mt-6">
           <MyTransactionsSection />
         </View>
-        <ScrollView className="mt-6 flex-1">
-          <BenefitsSection />
-        </ScrollView>
+        {/* Benefits (rewards, staking, exchange) was template UI with no working action: hidden for M3 */}
       </ScrollView>
     </SafeLayout>
   );

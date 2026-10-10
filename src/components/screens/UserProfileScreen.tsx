@@ -1,6 +1,6 @@
 import { View, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Avatar, Button, ListButton } from "../core";
+import { Avatar, Button } from "../core";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { router } from "expo-router";
@@ -43,34 +43,7 @@ export const UserProfileScreen = () => {
               {user?.email}
             </Text>
           </View>
-          <View className="mt-8 w-full">
-            <View className="mt-2">
-              <ListButton
-                label="Help"
-                color="primary"
-                icon="HelpMan"
-                onPress={() => {}}
-              />
-            </View>
-            <View className="mt-4">
-              <ListButton
-                label="Settings"
-                icon="SettingsCog"
-                color="warning"
-                onPress={() => {}}
-              />
-            </View>
-            <View className="mt-4">
-              <ListButton
-                label="FAQ"
-                icon="Help"
-                color="secondary"
-                withChevron={false}
-                onPress={() => {}}
-              />
-            </View>
-          </View>
-          <View className="mt-8 h-[1px] w-full bg-black/40" />
+          {/* Help, Settings, FAQ and Delete Account had no handler: hidden in the M3 test build */}
           <View className="mt-8 w-full">
             <Button
               onPress={handleSignOut}
@@ -78,9 +51,6 @@ export const UserProfileScreen = () => {
               label="Logout"
               icon={Logout}
             />
-          </View>
-          <View className="mt-4 w-full">
-            <Button onPress={() => {}} variant="ghost" label="Delete Account" />
           </View>
         </View>
       )}
