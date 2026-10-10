@@ -51,7 +51,8 @@ export const TransactionCard = ({
                 numberOfLines={1}
                 className="truncate text-xs font-medium"
               >
-                {data.address}
+                {/* not data.address: that is the Blazar funds script, not a counterparty */}
+                {data.layer === "L1" ? "L1 funds, not payable yet" : "Hydra L2 funds"}
               </ThemedText>
             </View>
             <ThemedText className="text-xs opacity-50" numberOfLines={1}>

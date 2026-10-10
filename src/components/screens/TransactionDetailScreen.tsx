@@ -29,7 +29,7 @@ export const TransactionDetailScreen = ({
         </View>
         {!data ? (
           <ThemedText type="default" className="mt-8 text-center opacity-50">
-            Transaction details are not available.
+            This UTxO is not among your funds.
           </ThemedText>
         ) : (
           <>
@@ -40,18 +40,21 @@ export const TransactionDetailScreen = ({
             ))}
             <ThemedView className="mt-8 w-full rounded-[32px] border p-6">
               <ThemedText type="default" className="opacity-50">
-                Transaction
+                {data.layer === "L1" ? "UTxO on L1 (not payable yet)" : "UTxO in Hydra L2"}
               </ThemedText>
               <ThemedText type="default" selectable className="font-semibold">
                 {data.txHash}#{data.outputIndex}
               </ThemedText>
               <ThemedText type="default" className="mt-4 opacity-50">
-                Address
+                Held at the Blazar funds script
               </ThemedText>
               <ThemedText type="default" selectable className="font-semibold">
                 {data.address}
               </ThemedText>
             </ThemedView>
+            <ThemedText type="default" className="mt-4 text-center text-xs opacity-50">
+              ADA in a funds UTxO includes its locked min-ADA deposit, which is not payable.
+            </ThemedText>
           </>
         )}
       </View>

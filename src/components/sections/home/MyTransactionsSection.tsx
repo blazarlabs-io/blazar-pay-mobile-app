@@ -14,7 +14,7 @@ export const MyTransactionsSection = () => {
   return (
     <View>
       <View className="flex flex-row items-center justify-between">
-        <ThemedText className="font-bold">My Transactions</ThemedText>
+        <ThemedText className="font-bold">My funds</ThemedText>
         <TouchableOpacity onPress={() => router.push("/my-transactions")}>
           <ThemedText
             className="text-sm font-bold"
@@ -66,6 +66,11 @@ export const MyTransactionsSection = () => {
               )}
             </View>
           ))}
+        {transactions.length > 0 && (
+          <ThemedText className="mt-2 px-2 text-xs opacity-50">
+            ADA in a funds UTxO includes its locked min-ADA deposit, which is not payable.
+          </ThemedText>
+        )}
         {/* <View className="mt-8">
           <TransactionCard
             label="Shell"

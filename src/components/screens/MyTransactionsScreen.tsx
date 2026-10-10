@@ -4,7 +4,7 @@ import { FlatList, SafeAreaView, StatusBar, View } from "react-native";
 import { ThemedText, TransactionCard } from "../core";
 import { router } from "expo-router";
 
-// Same data as the Home section: the payer's funds UTxOs from GET /query-funds.
+// Same data as the Home section: the payer's funds UTxOs from GET /query-funds (not a payment history).
 export const MyTransactionsScreen = () => {
   const { transactions } = useWallet();
   return (
@@ -21,7 +21,7 @@ export const MyTransactionsScreen = () => {
           data={transactions}
           ListEmptyComponent={
             <ThemedText className="mt-8 text-center opacity-50">
-              No transactions yet.
+              No funds yet.
             </ThemedText>
           }
           renderItem={({ item }) => (
@@ -34,6 +34,13 @@ export const MyTransactionsScreen = () => {
               />
             </View>
           )}
+          ListFooterComponent={
+            transactions.length > 0 ? (
+              <ThemedText className="mt-4 text-xs opacity-50">
+                ADA in a funds UTxO includes its locked min-ADA deposit, which is not payable.
+              </ThemedText>
+            ) : null
+          }
           keyExtractor={(item) => `${item.txHash}#${item.outputIndex}`}
         />
       </SafeAreaView>

@@ -9,3 +9,9 @@ export const utxoAssets = (assets: Record<string, number | string>) =>
       symbol: ASSETS[unit].symbol,
       amount: formatBaseUnits(String(assets[unit]), ASSETS[unit].decimals),
     }));
+
+/** "91 ADA · 0 USDM · 0.0006984 BTC": every asset, exact, a missing unit counts as 0. */
+export const assetLine = (amounts: Record<string, number | string>) =>
+  (Object.keys(ASSETS) as AssetUnit[])
+    .map((unit) => `${formatBaseUnits(String(amounts[unit] ?? 0), ASSETS[unit].decimals)} ${ASSETS[unit].symbol}`)
+    .join(" · ");

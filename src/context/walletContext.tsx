@@ -14,12 +14,19 @@ import { ASSETS, AssetUnit, formatBaseUnits } from "@/types/payment-contract";
 
 export type CurrencyType = "ADA" | "USDM" | "WBTC";
 
+// query-funds sends quantities as JSON numbers or strings; keep them as base-unit strings
+const strings = (r: Record<string, number | string> = {}) =>
+  Object.fromEntries(Object.entries(r).map(([unit, qty]) => [unit, String(qty)]));
+
 interface ContextInterface {
   isWalletRegistered: boolean;
   adminWalletAddress: string;
   adaAddress: string;
   adaBalance: number; // ada/usdm/wbtc balances = payable in L2, display units
   getBalance: () => any;
+  balanceError: string | null; // last GET /query-funds failure, null after a successful load
+  payableInL2: Record<string, string>; // base units: the largest single payment per asset (one payment spends one funds UTxO)
+  totalInL2: Record<string, string>; // base units: everything in L2, lovelace incl. locked min-ADA
   l1Balances: Record<string, string>; // base units on L1, not payable
   adaConversionRate: number;
   usdmBalance: number;
@@ -40,6 +47,9 @@ const WalletContext = createContext<ContextInterface>({
   adaBalance: 0.0,
   wbtcBalance: 0.0,
   getBalance: () => {},
+  balanceError: null,
+  payableInL2: {},
+  totalInL2: {},
   l1Balances: {},
   adaConversionRate: 0.35,
   wbtcConversionRate: 1.0,
@@ -77,6 +87,9 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const [wbtcBalance, setWbtcBalance] = useState<number>(0.0);
   const [selectedCurrency, setSelectedCurrency] = useState<CurrencyType>("ADA");
   const [l1Balances, setL1Balances] = useState<Record<string, string>>({});
+  const [payableInL2, setPayableInL2] = useState<Record<string, string>>({});
+  const [totalInL2, setTotalInL2] = useState<Record<string, string>>({});
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const [adaConversionRate, setAdaConversionRate] = useState<number>(0);
   const [usdmConversionRate, setUsdmConversionRate] = useState<number>(1.0);
   const [wbtcConversionRate, setWbtcConversionRate] = useState<number>(0);
@@ -113,14 +126,17 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       setAdaBalance(display(ASSET_UNITS.ada));
       setUsdmBalance(display(ASSET_UNITS.usdm));
       setWbtcBalance(display(ASSET_UNITS.wbtc));
-      setL1Balances(
-        Object.fromEntries(
-          Object.entries(data.totalInL1).map(([unit, qty]) => [unit, String(qty)])
-        )
-      );
-      setTransactions(() => [...data.fundsInL1, ...data.fundsInL2]);
-    } catch (error) {
+      setPayableInL2(payable);
+      setTotalInL2(strings(data.totalInL2));
+      setL1Balances(strings(data.totalInL1));
+      setTransactions(() => [
+        ...data.fundsInL1.map((u) => ({ ...u, layer: "L1" as const })),
+        ...data.fundsInL2.map((u) => ({ ...u, layer: "L2" as const })),
+      ]);
+      setBalanceError(null);
+    } catch (error: any) {
       console.log(error);
+      setBalanceError(error?.message ?? String(error)); // never show stale or zero balances as if they were real
     }
   };
 
@@ -191,6 +207,9 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         adaAddress,
         adaBalance,
         getBalance,
+        balanceError,
+        payableInL2,
+        totalInL2,
         l1Balances,
         adaConversionRate,
         usdmBalance,

@@ -2,7 +2,7 @@ import React from "react";
 import { Text } from "react-native";
 import renderer, { act, ReactTestRenderer } from "react-test-renderer";
 import type { Transaction } from "@/types/db";
-import { utxoAssets } from "@/utils/assets";
+import { assetLine, utxoAssets } from "@/utils/assets";
 import { MyTransactionsScreen } from "@/components/screens/MyTransactionsScreen";
 import { TransactionDetailScreen } from "@/components/screens/TransactionDetailScreen";
 
@@ -27,6 +27,7 @@ const BTC = "d2a8592ec9673ac18fea1044885f94518e954ab0cb2b6bb0a328d2af425443";
 const CONTROL_TOKEN = "5d09adde".padEnd(120, "0");
 // A real funds UTxO from GET /query-funds (bridged BTC deposit)
 const utxo: Transaction = {
+  layer: "L2",
   txHash: "61839ca55a8870f17608a7c3614535f4a00e5dc1860c31fd288a337eadeda555",
   outputIndex: 0,
   assets: { [CONTROL_TOKEN]: 1, [BTC]: 29940, lovelace: 3142150 },
@@ -67,6 +68,14 @@ describe("utxoAssets", () => {
   });
 });
 
+describe("assetLine", () => {
+  it("prints every asset exactly, missing units as 0", () => {
+    // live totalInL2 of the test payer: 3 funds UTxOs, two of them BTC
+    expect(assetLine({ lovelace: 99284300, [BTC]: 69840 })).toBe("99.2843 ADA · 0 USDM · 0.0006984 BTC");
+    expect(assetLine({})).toBe("0 ADA · 0 USDM · 0 BTC");
+  });
+});
+
 describe("MyTransactionsScreen", () => {
   it("lists the wallet's funds, not mock data", async () => {
     mockTransactions = [utxo];
@@ -75,14 +84,14 @@ describe("MyTransactionsScreen", () => {
 
   it("shows an empty state when there are none", async () => {
     mockTransactions = [];
-    expect(await texts(<MyTransactionsScreen />)).toMatch(/No transactions yet/);
+    expect(await texts(<MyTransactionsScreen />)).toMatch(/No funds yet/);
   });
 });
 
 describe("TransactionDetailScreen", () => {
   it("renders a safe state for an unknown transaction", async () => {
     expect(await texts(<TransactionDetailScreen data={undefined} />)).toMatch(
-      /not available/
+      /not among your funds/
     );
   });
 
@@ -91,5 +100,13 @@ describe("TransactionDetailScreen", () => {
     expect(out).toMatch(/0\.0002994 BTC/);
     expect(out).toMatch(/3\.14215 ADA/);
     expect(out).toMatch(`${utxo.txHash}#0`);
+  });
+
+  it("labels the UTxO and the funds script, and says the ADA includes the locked deposit", async () => {
+    const out = await texts(<TransactionDetailScreen data={utxo} />);
+    expect(out).toMatch(/UTxO in Hydra L2/);
+    expect(out).toMatch(/Held at the Blazar funds script/);
+    expect(out).toMatch(/locked min-ADA deposit, which is not payable/);
+    expect(await texts(<TransactionDetailScreen data={{ ...utxo, layer: "L1" }} />)).toMatch(/UTxO on L1 \(not payable yet\)/);
   });
 });

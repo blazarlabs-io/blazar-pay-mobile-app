@@ -29,6 +29,7 @@ export type UserData = {
 };
 
 export type Transaction = {
+  layer?: "L1" | "L2"; // set by walletContext: query-funds fundsInL1 or fundsInL2
   txHash: string;
   outputIndex: number;
   assets: {

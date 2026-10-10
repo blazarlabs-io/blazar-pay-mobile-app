@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { ASSETS, AssetUnit, formatBaseUnits } from "@/types/payment-contract";
 import { ASSET_UNITS } from "@/constants/assetUnits";
 import { DEPOSIT_LABEL, inProgressSats } from "@/services/deposit-flow";
+import { assetLine } from "@/utils/assets";
 
 // Price feed may be unavailable (no API key / offline): show a dash instead of $NaN.
 const usd = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "—");
@@ -20,8 +21,14 @@ export const BalanceInfo = () => {
     usdmConversionRate,
     wbtcConversionRate,
     l1Balances,
+    payableInL2,
+    totalInL2,
+    balanceError,
+    getBalance,
     btcDeposit,
   } = useWallet();
+  // exact payable amount, same formatting as every other screen (no toFixed rounding)
+  const payable = (unit: AssetUnit) => formatBaseUnits(payableInL2[unit] ?? "0", ASSETS[unit].decimals);
   const pendingSats = inProgressSats(btcDeposit);
 
   useEffect(() => {
@@ -52,7 +59,7 @@ export const BalanceInfo = () => {
         <Text className="text-base font-black opacity-50">USD</Text>
       </View>
       <View className="px-6">
-        <Text className="text-base">Payable balance (Hydra L2)</Text>
+        <Text className="text-base">Payable in one payment (Hydra L2)</Text>
       </View>
       <View
         style={{ flex: 1 }}
@@ -62,7 +69,7 @@ export const BalanceInfo = () => {
         <View className="flex max-w-fit flex-col items-start justify-center">
           <View className="flex flex-row items-center justify-start gap-x-1 pt-6">
             <Icons.AdaIcon />
-            <Text className="text-base font-bold">{adaBalance.toFixed(2)}</Text>
+            <Text className="text-base font-bold">{payable(ASSET_UNITS.ada)}</Text>
             {/* <Text className="pl-1 text-xs font-black opacity-50">ADA</Text> */}
           </View>
           <View className="flex flex-row items-center justify-start gap-x-1 opacity-50">
@@ -77,7 +84,7 @@ export const BalanceInfo = () => {
           <View className="flex flex-row items-center justify-start gap-x-1 pt-6">
             <Icons.UsdmIcon />
             <Text className="text-base font-bold">
-              {usdmBalance.toFixed(2)}
+              {payable(ASSET_UNITS.usdm)}
             </Text>
             {/* <Text className="pl-1 text-xs font-black opacity-50">USDM</Text> */}
           </View>
@@ -93,7 +100,7 @@ export const BalanceInfo = () => {
           <View className="flex flex-row items-center justify-start gap-x-1 pt-6">
             <Icons.Wbtc />
             <Text className="text-base font-bold">
-              {wbtcBalance.toFixed(8)}
+              {payable(ASSET_UNITS.wbtc)}
             </Text>
           </View>
           <View className="flex flex-row items-center justify-end gap-x-1 opacity-50">
@@ -105,11 +112,18 @@ export const BalanceInfo = () => {
         </View>
       </View>
     </View>
-    {/* * L1 funds are not payable until committed to the Hydra head */}
+    {!!balanceError && (
+      <TouchableOpacity onPress={getBalance} className="mt-2 px-6">
+        <Text className="text-xs font-bold text-red-600">{`Balances could not be loaded (${balanceError}). Tap to retry.`}</Text>
+      </TouchableOpacity>
+    )}
+    {/* * One payment spends one funds UTxO: the total can exceed what a single payment can use */}
     <Text className="mt-2 px-6 text-xs opacity-50">
-      {`On L1, not payable yet: ${(Object.keys(ASSETS) as AssetUnit[])
-        .map((u) => `${formatBaseUnits(l1Balances[u] ?? "0", ASSETS[u].decimals)} ${ASSETS[u].symbol}`)
-        .join(" · ")}`}
+      {`In Hydra L2 in total: ${assetLine(totalInL2)} (ADA incl. locked min-ADA)`}
+    </Text>
+    {/* * L1 funds are not payable until committed to the Hydra head */}
+    <Text className="mt-1 px-6 text-xs opacity-50">
+      {`On L1, not payable yet: ${assetLine(l1Balances)}`}
     </Text>
     {/* * BTC on its way through the bridge: never part of the payable balance above */}
     {pendingSats && btcDeposit && (
