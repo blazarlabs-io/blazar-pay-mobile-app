@@ -26,6 +26,10 @@ describe("payInfoCbor", () => {
   it("refuses what it cannot encode exactly", () => {
     const base = { assetUnit: "lovelace", amountBaseUnits: "1", fundsInRef: `${"11".repeat(32)}#0` };
     expect(() => payInfoCbor({ ...base, merchantAddress: "addr_test1merchant" })).toThrow();
+    // script payment credential: the backend's tx builder encodes every credential as a key
+    const scriptBase =
+      "addr_test1zrhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwams0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8saqnrty";
+    expect(() => payInfoCbor({ ...base, merchantAddress: scriptBase })).toThrow(/not supported/);
     expect(() => payInfoCbor({ ...base, merchantAddress: MERCHANT, fundsInRef: "abc#0" })).toThrow(/funds/);
   });
 });

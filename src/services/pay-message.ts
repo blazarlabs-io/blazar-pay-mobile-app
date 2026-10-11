@@ -26,20 +26,19 @@ const cbor = (d: PlutusData): string => {
 
 const hex = (b: number[]) => b.map((x) => x.toString(16).padStart(2, "0")).join("");
 
-/** Plutus Address of a Shelley base or enterprise address (header type 0-3 or 6-7); anything else throws. */
+/**
+ * Plutus Address of a Shelley base (header type 0) or enterprise (type 6) address with key credentials;
+ * anything else throws: the backend's tx builder encodes every credential as a key.
+ */
 function addressData(address: string): PlutusData {
   const bytes = bech32.fromWords(bech32.decode(address, 1023).words);
   const type = bytes[0] >> 4;
-  const cred = (isScript: number, from: number): PlutusData => ({
-    constr: isScript,
-    fields: [{ bytes: hex(bytes.slice(from, from + 28)) }],
-  });
-  if (type <= 3 && bytes.length === 57) {
-    const stake = { constr: 0, fields: [{ constr: 0, fields: [cred((type >> 1) & 1, 29)] }] }; // Some(Inline)
-    return { constr: 0, fields: [cred(type & 1, 1), stake] };
+  const key = (from: number): PlutusData => ({ constr: 0, fields: [{ bytes: hex(bytes.slice(from, from + 28)) }] });
+  if (type === 0 && bytes.length === 57) {
+    return { constr: 0, fields: [key(1), { constr: 0, fields: [{ constr: 0, fields: [key(29)] }] }] }; // Some(Inline)
   }
-  if ((type === 6 || type === 7) && bytes.length === 29) {
-    return { constr: 0, fields: [cred(type & 1, 1), { constr: 1, fields: [] }] }; // stake None
+  if (type === 6 && bytes.length === 29) {
+    return { constr: 0, fields: [key(1), { constr: 1, fields: [] }] }; // stake None
   }
   throw new Error("This merchant address type is not supported for payments.");
 }
