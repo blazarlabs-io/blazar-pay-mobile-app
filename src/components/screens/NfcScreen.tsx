@@ -4,7 +4,8 @@ import { BleClient } from "../../services/ble-client";
 import { Button, Icons, SafeLayout, ThemedText, ThemedView } from "../core";
 import { useWalletRegistration } from "@/hooks/useWalletRegistration";
 import { Colors } from "@/constants/Colors";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useRoute } from "@react-navigation/native";
 import { useWallet } from "@/context/walletContext";
 import { authorize, getPayment, getTerminalPendingPayment } from "@/services/api";
 import { findMismatch, isSupportedAsset, payAndWait } from "@/services/payment-flow";
@@ -32,7 +33,9 @@ export const NfcScreen = () => {
   const [bleClient] = useState(() => new BleClient());
   const [nfc, setNfc] = useState<"on" | "off" | "none">();
   const { terminal, paymentId } = useLocalSearchParams<{ terminal?: string; paymentId?: string }>();
+  const { params } = useRoute(); // a new object on every navigation here, also for the same link opened again
   const run = useRef(0);
+  const paying = useRef(false); // payAndWait is running: leaving the tab neither drops nor restarts it
 
   // Each flow takes a new run id; results of an older one (a cancelled NFC read, an earlier scan) are dropped
   const begin = useCallback((first: Step) => {
@@ -88,6 +91,7 @@ export const NfcScreen = () => {
             ? await getPayment(target.paymentId)
             : await getTerminalPendingPayment(target.terminal);
         if (!payment) throw new Error(NO_PENDING_PAYMENT);
+        if (payment.state !== "created") throw new Error(`This payment is already ${payment.state}.`);
         if (!isSupportedAsset(payment)) {
           throw new Error("This payment is in an asset the app does not support.");
         }
@@ -102,10 +106,12 @@ export const NfcScreen = () => {
 
   const handleSendPayment = async (payment: Payment) => {
     const show = begin({ step: "paying", payment });
+    paying.current = true;
     const outcome = await payAndWait(
       { authorize, getPayment },
       payment.paymentId
     );
+    paying.current = false;
     if (!outcome.ok) {
       show({ step: "error", message: outcome.message });
       return;
@@ -124,13 +130,21 @@ export const NfcScreen = () => {
     };
   }, []);
 
-  // * A deep link (?terminal= or ?paymentId=) is resolved like a tag; otherwise NFC when it is on, else BLE
-  useEffect(() => {
-    if (!nfc) return;
-    if (terminal !== undefined || paymentId !== undefined) startNfc(toNfcTarget({ terminal, paymentId }));
-    else if (nfc === "on") startNfc();
-    else startScan();
-  }, [nfc, terminal, paymentId, startNfc, startScan]);
+  // * Each time the Pay tab gains focus or is navigated to (a deep link, even the same one again): a deep link
+  // (?terminal= or ?paymentId=) is resolved like a tag; otherwise NFC when it is on, else BLE. Losing focus stops
+  // the NFC read and drops the run, except a payment being confirmed, which keeps its screen and its outcome.
+  useFocusEffect(
+    useCallback(() => {
+      if (!nfc || paying.current) return;
+      if (terminal !== undefined || paymentId !== undefined) startNfc(toNfcTarget({ terminal, paymentId }));
+      else if (nfc === "on") startNfc();
+      else startScan();
+      return () => {
+        if (!paying.current) run.current++;
+        cancelNfcRead();
+      };
+    }, [nfc, terminal, paymentId, params, startNfc, startScan])
+  );
 
   const bluetoothButton = (
     <Button
