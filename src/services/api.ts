@@ -30,12 +30,25 @@ async function call<T>(path: string, method: "GET" | "POST" = "GET", body: objec
   });
   const json = await res.json().catch(() => null);
   // Errors are {"error":"CODE"}; a 422 on /deposits/:id/btc-tx also carries the updated "deposit".
-  if (!res.ok) throw new Error(`Backend error ${res.status}${json?.error ? `: ${json.error}` : ""}`);
+  if (!res.ok)
+    throw Object.assign(new Error(`Backend error ${res.status}${json?.error ? `: ${json.error}` : ""}`), { status: res.status });
   return json as T;
 }
 
 export const getPayment = (paymentId: string) =>
   call<Payment>(`/payments/${encodeURIComponent(paymentId)}`);
+
+export const UNKNOWN_TERMINAL = "Unknown terminal: this tag does not belong to a HydraPay merchant.";
+
+/** The terminal's oldest pending payment (terminal id = merchant account id, from its NFC tag); null = nothing pending (204). */
+export async function getTerminalPendingPayment(terminalId: string): Promise<Payment | null> {
+  try {
+    // 204 has no body, so call() returns null
+    return await call<Payment | null>(`/terminals/${encodeURIComponent(terminalId)}/pending-payment`);
+  } catch (e: any) {
+    throw e?.status === 404 ? new Error(UNKNOWN_TERMINAL) : e;
+  }
+}
 
 /** 200 = final state, 202 = submitted (keep polling GET). Repeating it for the same payer is a no-op. */
 export const authorize = (paymentId: string) =>

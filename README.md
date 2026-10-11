@@ -4,12 +4,13 @@ Hydrapay is a React Native + Expo Router application for Hydra-powered micropaym
 
 ## Milestone 3: USDM and BTC payments (testnet)
 
-This app is the payer side of the M3 demo. It works only on **Cardano preprod** and **Bitcoin testnet3**, against the custodial demo backend `https://blazar-api.cardano.vip` (`blazar-hydra`). The other parts are the merchant web (`blazar-pay-merchant-web`), which creates payment requests, and the BLE terminal (`blazar-pay-termial`), which shows the pending request to the phone. Test accounts are provided on request.
+This app is the payer side of the M3 demo. It works only on **Cardano preprod** and **Bitcoin testnet3**, against the custodial demo backend `https://blazar-api.cardano.vip` (`blazar-hydra`). The other parts are the merchant web (`blazar-pay-merchant-web`), which creates payment requests, and the terminal (`blazar-pay-termial`), which hands the pending request to the phone over NFC (a tag on the terminal) or BLE. Test accounts are provided on request.
 
 ### Features
 - **Login.** Firebase email/password only (the Google, Sign up and Forgot Password buttons are not wired). The Firebase user must be mapped to a backend `user` account by the operator; every backend call sends the user's Firebase ID token as `Authorization: Bearer`.
 - **Balances.** Home shows "Payable balance (Hydra L2)", which is `payableInL2` from `GET /query-funds` (ADA and USDM with 6 decimals, BTC with 8). Funds on Cardano L1 are on a separate line, "On L1, not payable yet", and are never added to the payable amount. A BTC deposit still on its way is shown on its own line, also not payable.
-- **Contactless payment (BLE).** The Pay screen scans for the terminal `Hydra TERM` (proximity heuristic of about 5 cm from RSSI) and reads four read-only characteristics: merchant address, amount in base units, asset unit and `paymentId`. It then loads `GET /payments/:paymentId`, aborts if the terminal values differ from the backend record, and shows the amount from the backend. "Pay" calls `POST /payments/:paymentId/authorize`, which is the payer's consent, and the screen shows "Waiting for confirmation..." while it polls every 1 s (up to 120 s) until `confirmed`, `failed` or `expired`. Nothing is written to the terminal, and the Pay button is disabled while a payment is in flight.
+- **Contactless payment (NFC).** The terminal carries a static NFC tag (e.g. an NTAG215 sticker) with one NDEF URI record, `myapp://home/nfc?terminal=<merchant account id>`. When the phone has NFC and it is on, the Pay screen waits for the tag ("Tap the terminal"; on iOS the system "Ready to Scan" sheet), decodes the first URI record and calls `GET /terminals/:id/pending-payment`: 200 shows that payment's amount from the backend, 204 shows "No payment is waiting at this terminal", 404 "Unknown terminal". `myapp://home/nfc?paymentId=<uuid>` is also accepted (direct handoff; it loads `GET /payments/:paymentId`). Anything else (another scheme, path or param, or an id that is not a UUID) shows "This is not a HydraPay terminal tag or link". The same URIs work as deep links. From there the flow is the BLE one below: "Pay" → `authorize` → polling → success only for `confirmed`. The NFC session is always closed after a read. "Use Bluetooth instead" switches to BLE. A phone without NFC (or with NFC off) goes straight to BLE and says why. Library: `react-native-nfc-manager` 3.17.5 (the 3.x line supports the old architecture of RN 0.74).
+- **Contactless payment (BLE, alternative).** The Pay screen scans for the terminal `Hydra TERM` (proximity heuristic of about 5 cm from RSSI) and reads four read-only characteristics: merchant address, amount in base units, asset unit and `paymentId`. It then loads `GET /payments/:paymentId`, aborts if the terminal values differ from the backend record, and shows the amount from the backend. "Pay" calls `POST /payments/:paymentId/authorize`, which is the payer's consent, and the screen shows "Waiting for confirmation..." while it polls every 1 s (up to 120 s) until `confirmed`, `failed` or `expired`. Nothing is written to the terminal, and the Pay button is disabled while a payment is in flight.
 - **Success screen verified against the backend.** The success route receives only the `paymentId` and reads `GET /payments/:paymentId` again. It shows the amount, Hydra tx id and snapshot number only when the backend says `confirmed`; any other state, a backend error or a missing id shows "Payment not confirmed" with the reason. A crafted deep link cannot display a false success.
 - **BTC testnet deposit.** Home → "Deposit BTC (testnet bridge)". The app never holds BTC keys: the user sends testnet3 BTC from an external wallet through the WanBridge testnet, and the backend commits the bridged BTC into Hydra. Steps below.
 
@@ -64,27 +65,19 @@ Install from the EAS link or QR code on a registered iPhone; on iOS 16+ enable D
 ```sh
 CI=1 npx jest --ci
 ```
-25 tests in 3 suites: amount conversion, terminal/backend mismatch check, authorize-and-poll outcomes (`src/services/__tests__/payment-flow-test.ts`), the deposit timeline, sats and txid parsing and Electrum lines (`deposit-flow-test.ts`), and the success screen against forged parameters (`src/components/__tests__/PaymentSuccessScreen-test.tsx`).
+56 tests in 9 suites, among them: amount conversion, terminal/backend mismatch check, authorize-and-poll outcomes (`src/services/__tests__/payment-flow-test.ts`), NFC URI record decoding, tag/deep-link parsing and closing the NFC session (`nfc-client-test.ts`), the deposit timeline, sats and txid parsing and Electrum lines (`deposit-flow-test.ts`), and the success screen against forged parameters (`src/components/__tests__/PaymentSuccessScreen-test.tsx`).
 
-### Verified so far
-On an Android 14 emulator with the release APK and the live backend: the payable L2 balance equals the backend, the success screen of a 5 ADA payment is read from the backend (Hydra tx and snapshot), a forged success deep link shows "Payment not confirmed", and a BTC deposit created in the app went through every timeline step to Available. Not yet verified: a payment over BLE on a physical phone with the Raspberry Pi terminal, and an iOS build.
+Tests on your own Android phone (NFC tag tap, optional BLE terminal and BTC deposit): [REVIEWER-TEST-GUIDE.md](REVIEWER-TEST-GUIDE.md).
 
-### Known limitations
-- Testnet/preprod only; custodial demo backend (the backend holds the funds and signs).
-- The deployed Hydra validator does not enforce the payer's signature; consent is the authenticated `authorize` call.
-- Contactless transport: BLE. The BLE scan has no timeout; use "Scan again".
-- The payable amount per asset is the largest single L2 funds UTxO (one payment spends one UTxO), not the sum of all deposits.
-- All BTC deposits go to one shared bridge address; attribution is by the submitted txid. Only one deposit is tracked per user per device.
-- No BTC cash-out, no BTC/ADA swap, no Bitcoin wallet in the app.
-- The payer address comes from the build env, not from the signed-in account, so one build serves one payer.
-- If the `authorize` response is lost (network drop), the app shows a failure although the payment may still confirm; check with the merchant before paying again.
+### Verified
+On an Android 14 emulator with the release APK and the live backend: the payable L2 balance equals the backend, the success screen of a 5 ADA payment is read from the backend (Hydra tx and snapshot), a forged success deep link shows "Payment not confirmed", and a BTC deposit created in the app went through every timeline step to Available. The NFC links (`myapp://home/nfc?paymentId=…` and `?terminal=…`) were checked by opening them on the emulator, with payments confirmed in Hydra.
 
 ## Tech Stack
 - React Native 0.74, Expo SDK 51, Expo Router with typed routes
 - TypeScript with strict mode and path alias `@/*`
 - NativeWind + TailwindCSS for styling; React Navigation theming
 - Firebase Auth + Firestore for identity and user data
-- BLE client (react-native-ble-plx) for contactless terminal pairing
+- NFC tag reader (react-native-nfc-manager 3.17.5) and BLE client (react-native-ble-plx) for the contactless terminal
 - LiveCoinWatch price feed for ADA/BTC quotes
 - Jest + jest-expo for component testing
 
@@ -128,6 +121,7 @@ EXPO_PUBLIC_API_URL=
 - `src/context/` – Providers for auth, wallet state, and currency exchange.
 - `src/lib/firebase/` – Firebase initialization and Firestore helpers.
 - `src/services/` – External integrations:
+  - `nfc-client/` NFC tag read and `myapp://home/nfc?...` parsing
   - `ble-client/` contactless terminal BLE helper
   - `coinwatch/` price feed client
 - `src/hooks/` – Custom hooks (`useWalletRegistration`, theming helpers).
@@ -139,6 +133,7 @@ EXPO_PUBLIC_API_URL=
 - **Providers**: `src/context/Providers.tsx` wraps the app with `AuthProvider`, `WalletProvider`, and `ExchangeProvider` so screens can consume `useAuth`, `useWallet`, and `useExchange`.
 - **Auth & Data**: `AuthProvider` listens to `onAuthStateChanged` and routes authenticated users to `/home`. Firestore accessors live in `src/lib/firebase/services/db`.
 - **Wallet state**: `WalletProvider` calls `${EXPO_PUBLIC_API_URL}/query-funds?address=...` (`src/services/api.ts`). The balances shown as spendable are `payableInL2`; L1 funds are listed separately and are not payable. It also subscribes to user Firestore docs.
+- **Payments (NFC)**: `NfcScreen` reads the terminal's tag with `nfc-client` (or takes the same `terminal`/`paymentId` from a deep link), loads the payment with `GET /terminals/:id/pending-payment` or `GET /payments/:id`, and continues as for BLE. The `NFC` constants (scheme, path, params) in `src/types/payment-contract.ts` mirror the backend's. The iOS project (bare) has `NFCReaderUsageDescription` in `Info.plist` and the `com.apple.developer.nfc.readersession.formats` = `TAG` entitlement (the library reads NDEF through `NFCTagReaderSession`); Android gets the permission and `uses-feature android.hardware.nfc` (not required) from the config plugin at prebuild.
 - **Payments (BLE)**: `NfcScreen` scans for the `Hydra TERM` terminal and reads four read-only characteristics: merchant address, amount in base units, asset unit and `paymentId` (UUIDs in `src/types/payment-contract.ts`). It fetches `GET /payments/:id`, aborts if the terminal values differ, and on "Pay" calls `POST /payments/:id/authorize`, then polls until `confirmed`, `failed` or `expired`. The success screen is shown only for `confirmed`. Nothing is written to the terminal.
 - **BTC deposit (testnet)**: Home → "Deposit BTC (testnet bridge)" (`DepositBtcScreen`). The amount in BTC becomes exact sats, `POST /deposits/btc` returns the WanBridge address, amount and OP_RETURN memo, shown with copy buttons, a QR for the address and the Electrum testnet3 "Pay to" lines. The user pays from an external wallet (no BTC keys in the app), pastes the txid (`POST /deposits/:id/btc-tx`), and the app polls `GET /deposits/:id` every 10 s. BTC is payable only when the backend reports `available`; amounts still in the bridge are shown apart from the payable balance. The last deposit id is kept per user in AsyncStorage.
 - **Pricing**: `getAdaUsdTicker` and `getBtcUsdTicker` call LiveCoinWatch using `EXPO_PUBLIC_LIVE_COIN_WATCH_API_KEY`.
@@ -161,6 +156,7 @@ EXPO_PUBLIC_API_URL=
 - Submit stores: `eas submit -p android --profile production` (profile in `submit.production`).
 
 ## Common Troubleshooting
+- **Tapping the terminal does nothing**: NFC must be on (Android Settings → Connected devices → NFC); the tag must hold a URI record `myapp://home/nfc?terminal=<uuid>`. Hold the phone on the tag until the amount appears, then lift it. On iOS NFC needs a build signed by a paid Apple Developer team.
 - **BLE scanning fails / powered off**: The BLE client requests permissions and prompts to enable Bluetooth; ensure location/BLE permissions are granted on Android 12+.
 - **Balance stays at zero**: Verify `EXPO_PUBLIC_ADA_WALLET_ADDRESS` and `EXPO_PUBLIC_API_URL`, that you are signed in, and that the backend returns `payableInL2`.
 - **Missing env values**: Expo will start but Firebase/Auth calls will fail; confirm `.env` is loaded and keys start with `EXPO_PUBLIC_`.
