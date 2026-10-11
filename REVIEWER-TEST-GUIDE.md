@@ -11,7 +11,7 @@ Everything runs on test networks: **Cardano preprod**, a **Hydra head** on prepr
 | Android APK (release page) | https://github.com/blazarlabs-io/blazar-pay-mobile-app/releases/tag/m3-nfc-0ec653f |
 | APK file | `hydrapay-m3-0ec653f.apk` |
 | APK sha256 | `53d0bc2bd53b348499cafacf7edf024b4ccf473524dad244a07bef1759b17add` |
-| Merchant web | https://merchant-6t7pkkhur-blazar-labs-3dee37d6.vercel.app (`https://m3-merchant.blazarlabs.io` may become the stable URL) |
+| Merchant web | https://m3-merchant.blazarlabs.io |
 | Backend | `https://blazar-api.cardano.vip` (health: https://blazar-api.cardano.vip/health) |
 | Terminal NFC tag (one NDEF URI record) | `myapp://home/nfc?terminal=3c0825c6-3f78-4d34-bf34-e39130fecd73` |
 | Payer address (preprod) | `addr_test1qqv50nl9rp55wt9lvpsshsuu9fxmlqskudg8gmdygpldy6kgtmx9p4gfkl52500g8kcxs7d683w89ne7d5gkgl4yl0jq0ve0zj` |
