@@ -1,19 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Modal, useColorScheme, View, Text } from "react-native";
 import { BleClient } from "../../services/ble-client";
 import { Button, Icons, SafeLayout, ThemedText, ThemedView } from "../core";
 import { useWalletRegistration } from "@/hooks/useWalletRegistration";
 import { Colors } from "@/constants/Colors";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useWallet } from "@/context/walletContext";
-import { authorize, getPayment } from "@/services/api";
-import { findMismatch, payAndWait } from "@/services/payment-flow";
+import { authorize, getPayment, getTerminalPendingPayment } from "@/services/api";
+import { findMismatch, isSupportedAsset, payAndWait } from "@/services/payment-flow";
+import { cancelNfcRead, nfcStatus, readTerminalTag, toNfcTarget, type NfcTarget } from "@/services/nfc-client";
 import { ASSETS, formatBaseUnits, type Payment } from "@/types/payment-contract";
 
 type Step =
-  | { step: "scanning" }
+  | { step: "tap" } // NFC: waiting for the terminal's tag
+  | { step: "scanning" } // BLE scan
+  | { step: "loading" }
   | { step: "ready" | "paying"; payment: Payment }
   | { step: "error"; message: string };
+
+const NO_HYDRAPAY_LINK = "This is not a HydraPay terminal tag or link.";
+const NO_PENDING_PAYMENT =
+  "No payment is waiting at this terminal. Ask the merchant to start the payment, then tap again.";
 
 export const NfcScreen = () => {
   const { isWalletRegistered } = useWallet();
@@ -21,8 +28,20 @@ export const NfcScreen = () => {
   const [modalVisible, setModalVisible] =
     useState<boolean>(!isWalletRegistered);
   const theme = useColorScheme() ?? "light";
-  const [view, setView] = useState<Step>({ step: "scanning" });
+  const [view, setView] = useState<Step>({ step: "loading" });
   const [bleClient] = useState(() => new BleClient());
+  const [nfc, setNfc] = useState<"on" | "off" | "none">();
+  const { terminal, paymentId } = useLocalSearchParams<{ terminal?: string; paymentId?: string }>();
+  const run = useRef(0);
+
+  // Each flow takes a new run id; results of an older one (a cancelled NFC read, an earlier scan) are dropped
+  const begin = useCallback((first: Step) => {
+    const id = ++run.current;
+    setView(first);
+    return (next: Step) => {
+      if (id === run.current) setView(next);
+    };
+  }, []);
 
   const handleCloseModal = () => {
     setModalVisible(false);
@@ -35,7 +54,8 @@ export const NfcScreen = () => {
 
   // * Read the terminal, then show what the backend says for that paymentId
   const startScan = useCallback(async () => {
-    setView({ step: "scanning" });
+    cancelNfcRead();
+    const show = begin({ step: "scanning" });
     try {
       if (!(await bleClient.requestPermissions())) {
         throw new Error("Bluetooth permission was not granted.");
@@ -48,21 +68,46 @@ export const NfcScreen = () => {
           `The terminal and the backend disagree on the ${mismatch}. Payment aborted.`
         );
       }
-      setView({ step: "ready", payment });
+      show({ step: "ready", payment });
     } catch (error: any) {
       console.log(error);
-      setView({ step: "error", message: error?.message ?? String(error) });
+      show({ step: "error", message: error?.message ?? String(error) });
     }
-  }, [bleClient]);
+  }, [bleClient, begin]);
+
+  // * Read the terminal's NFC tag (or take the same link from a deep link), then show the backend's payment
+  const startNfc = useCallback(
+    async (link?: NfcTarget | null) => {
+      const show = begin({ step: link === undefined ? "tap" : "loading" });
+      try {
+        const target = link === undefined ? await readTerminalTag() : link;
+        if (!target) throw new Error(NO_HYDRAPAY_LINK);
+        show({ step: "loading" });
+        const payment =
+          "paymentId" in target
+            ? await getPayment(target.paymentId)
+            : await getTerminalPendingPayment(target.terminal);
+        if (!payment) throw new Error(NO_PENDING_PAYMENT);
+        if (!isSupportedAsset(payment)) {
+          throw new Error("This payment is in an asset the app does not support.");
+        }
+        show({ step: "ready", payment });
+      } catch (error: any) {
+        console.log(error);
+        show({ step: "error", message: error?.message ?? String(error) });
+      }
+    },
+    [begin]
+  );
 
   const handleSendPayment = async (payment: Payment) => {
-    setView({ step: "paying", payment });
+    const show = begin({ step: "paying", payment });
     const outcome = await payAndWait(
       { authorize, getPayment },
       payment.paymentId
     );
     if (!outcome.ok) {
-      setView({ step: "error", message: outcome.message });
+      show({ step: "error", message: outcome.message });
       return;
     }
     router.push({
@@ -72,8 +117,31 @@ export const NfcScreen = () => {
   };
 
   useEffect(() => {
-    startScan();
-  }, [startScan]);
+    nfcStatus().then(setNfc);
+    return () => {
+      run.current++;
+      cancelNfcRead();
+    };
+  }, []);
+
+  // * A deep link (?terminal= or ?paymentId=) is resolved like a tag; otherwise NFC when it is on, else BLE
+  useEffect(() => {
+    if (!nfc) return;
+    if (terminal !== undefined || paymentId !== undefined) startNfc(toNfcTarget({ terminal, paymentId }));
+    else if (nfc === "on") startNfc();
+    else startScan();
+  }, [nfc, terminal, paymentId, startNfc, startScan]);
+
+  const bluetoothButton = (
+    <Button
+      variant="outline"
+      label="Use Bluetooth instead"
+      fullWidth
+      icon={null}
+      className="mt-4"
+      onPress={startScan}
+    />
+  );
 
   return (
     <SafeLayout>
@@ -124,6 +192,19 @@ export const NfcScreen = () => {
           className="h-[30%] w-[55%]"
           resizeMode="contain"
         />
+        {view.step === "tap" && (
+          <>
+            <ThemedText type="subtitle" className="max-w-[70%] text-center">
+              Tap the terminal
+            </ThemedText>
+            <ThemedText type="default" className="mt-6 max-w-[90%] text-center">
+              Hold the back of your phone against the HydraPay terminal's NFC
+              tag.
+            </ThemedText>
+            <ActivityIndicator style={{ marginTop: 24 }} size="large" />
+            {bluetoothButton}
+          </>
+        )}
         {view.step === "scanning" && (
           <>
             <ThemedText type="subtitle" className="max-w-[70%] text-center">
@@ -132,9 +213,14 @@ export const NfcScreen = () => {
             <ThemedText type="default" className="mt-6 max-w-[90%] text-center">
               Hold your phone near a HydraPay terminal. The app finds it over
               Bluetooth (BLE).
+              {nfc === "none" && " This phone has no NFC, so tapping the terminal is not available."}
+              {nfc === "off" && " NFC is turned off: turn it on in Settings to tap the terminal instead."}
             </ThemedText>
             <ActivityIndicator style={{ marginTop: 24 }} size="large" />
           </>
+        )}
+        {view.step === "loading" && (
+          <ActivityIndicator style={{ marginTop: 24 }} size="large" />
         )}
         {(view.step === "ready" || view.step === "paying") && (
           <>
@@ -184,12 +270,13 @@ export const NfcScreen = () => {
             </ThemedText>
             <Button
               variant="primary"
-              label="Scan again"
+              label={nfc === "on" ? "Tap the terminal" : "Scan again"}
               fullWidth
               icon={null}
               className="mt-8"
-              onPress={startScan}
+              onPress={() => (nfc === "on" ? startNfc() : startScan())}
             />
+            {nfc === "on" && bluetoothButton}
           </>
         )}
       </View>

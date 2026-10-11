@@ -9,9 +9,13 @@ export function findMismatch(p: Payment, ble: BleValues): string | null {
   if (p.merchantAddress !== ble.value1) return "merchant address";
   if (p.amountBaseUnits !== ble.value2) return "amount";
   if (p.assetUnit !== ble.value3) return "asset";
-  if (!isAssetUnit(p.assetUnit) || ASSETS[p.assetUnit].decimals !== p.decimals) return "unsupported asset";
+  if (!isSupportedAsset(p)) return "unsupported asset";
   return null;
 }
+
+/** The app knows the payment's asset, with the backend's decimals. */
+export const isSupportedAsset = (p: Payment) =>
+  isAssetUnit(p.assetUnit) && ASSETS[p.assetUnit].decimals === p.decimals;
 
 export type PayOutcome = { ok: true; payment: Payment } | { ok: false; message: string };
 

@@ -38,6 +38,13 @@
     },
     "plugins": [
       "react-native-ble-plx",
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "Allow $(PRODUCT_NAME) to read the HydraPay terminal's NFC tag",
+          "includeNdefEntitlement": false
+        }
+      ],
       "expo-router",
       [
         "expo-camera",
