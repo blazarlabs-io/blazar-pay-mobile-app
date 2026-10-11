@@ -11,7 +11,7 @@ Everything runs on test networks: **Cardano preprod**, a **Hydra head** on prepr
 | Android APK (release page) | https://github.com/blazarlabs-io/blazar-pay-mobile-app/releases/tag/m3-nfc-0ec653f |
 | APK file | `hydrapay-m3-0ec653f.apk` |
 | APK sha256 | `53d0bc2bd53b348499cafacf7edf024b4ccf473524dad244a07bef1759b17add` |
-| Merchant web | https://merchant-mt80kel0x-blazar-labs-3dee37d6.vercel.app (`https://m3-merchant.blazarlabs.io` may become the stable URL) |
+| Merchant web | https://merchant-6t7pkkhur-blazar-labs-3dee37d6.vercel.app (`https://m3-merchant.blazarlabs.io` may become the stable URL) |
 | Backend | `https://blazar-api.cardano.vip` (health: https://blazar-api.cardano.vip/health) |
 | Terminal NFC tag (one NDEF URI record) | `myapp://home/nfc?terminal=3c0825c6-3f78-4d34-bf34-e39130fecd73` |
 | Payer address (preprod) | `addr_test1qqv50nl9rp55wt9lvpsshsuu9fxmlqskudg8gmdygpldy6kgtmx9p4gfkl52500g8kcxs7d683w89ne7d5gkgl4yl0jq0ve0zj` |
@@ -59,11 +59,7 @@ You write the tag once. It carries only the terminal's id; the amount always com
 
 ## 3. NFC payment in ADA
 
-1. **Merchant, one-time setup.** On the laptop, open the merchant web and sign in with the **merchant** account. The merchant web normally reads the merchant's address from a connected CIP-30 wallet. You do not have that wallet, so set the public merchant address once in the browser console (F12 → Console), then reload the page:
-   ```js
-   localStorage.setItem("wallet", "addr_test1qqkmdp58hy4urz4zyszpdawfr23fhc3aky27rd7wh0u95h2pvaaxc8qdc6kmpuhz4t5kchxcneya5qtwfes0549pyujqveuc6j")
-   ```
-   The backend accepts a request only for the address mapped to the signed-in merchant.
+1. **Merchant.** On the laptop, open the merchant web and sign in with the **merchant** account. No wallet is needed: a request is created for the signed-in merchant's own address.
    *Expected:* the dashboard with a "Receive payment" card.
 2. **Merchant.** Click **Receive** → choose the **ADA** token → type `1` → **Request**.
    *Expected:* the sheet shows "Awaiting payment". The request expires after **120 seconds**, so do the next steps without delay.
