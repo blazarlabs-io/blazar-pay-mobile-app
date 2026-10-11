@@ -15,7 +15,7 @@ export default function MyTransactionsLayout() {
         options={{
           headerShown: true,
           headerTransparent: true,
-          headerTitle: "My Transactions",
+          headerTitle: "My funds",
           headerTitleAlign: "center",
           headerLeft: () => (
             <View className="">
@@ -31,7 +31,7 @@ export default function MyTransactionsLayout() {
         options={{
           headerShown: true,
           headerTransparent: true,
-          headerTitle: "Transaction Detail",
+          headerTitle: "Funds UTxO",
           headerTitleAlign: "center",
           headerLeft: () => (
             <View className="">

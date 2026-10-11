@@ -3,7 +3,7 @@ import { ThemedText } from "../Text/ThemedText";
 import { Icons } from "../Icon";
 import { Colors } from "@/constants/Colors";
 import { Transaction } from "@/types/db";
-import { ASSET_UNITS } from "@/constants/assetUnits";
+import { utxoAssets } from "@/utils/assets";
 
 type ColorKey = keyof typeof Colors.light; // or keyof typeof Colors.dark
 
@@ -51,7 +51,8 @@ export const TransactionCard = ({
                 numberOfLines={1}
                 className="truncate text-xs font-medium"
               >
-                {data.address}
+                {/* not data.address: that is the Blazar funds script, not a counterparty */}
+                {data.layer === "L1" ? "L1 funds, not payable yet" : "Hydra L2 funds"}
               </ThemedText>
             </View>
             <ThemedText className="text-xs opacity-50" numberOfLines={1}>
@@ -60,40 +61,25 @@ export const TransactionCard = ({
           </View>
 
           <View className="flex-1 flex-col items-end justify-center pr-2">
-            {data.assets[ASSET_UNITS.ada] && (
-              <View className="flex-0 shrink flex-row items-center gap-x-1">
-                {/* <Icons.UsdmIcon /> */}
+            {utxoAssets(data.assets).map(({ symbol, amount }) => (
+              <View
+                key={symbol}
+                className="flex-0 shrink flex-row items-center gap-x-1"
+              >
                 <ThemedText
                   numberOfLines={1}
                   className="flex max-w-fit text-[8px] font-bold opacity-50"
                 >
-                  ADA
+                  {symbol}
                 </ThemedText>
                 <ThemedText
                   numberOfLines={1}
                   className="flex max-w-fit text-xs font-medium"
                 >
-                  ₳{data.assets[ASSET_UNITS.ada] / 1000000}
+                  {amount}
                 </ThemedText>
               </View>
-            )}
-            {data.assets[ASSET_UNITS.usdm] && (
-              <View className="flex-0 shrink flex-row items-center gap-x-1">
-                {/* <Icons.UsdmIcon /> */}
-                <ThemedText
-                  numberOfLines={1}
-                  className="flex max-w-fit text-[8px] font-bold opacity-50"
-                >
-                  USDM
-                </ThemedText>
-                <ThemedText
-                  numberOfLines={1}
-                  className="flex max-w-fit text-xs font-medium"
-                >
-                  ${data.assets[ASSET_UNITS.usdm]}
-                </ThemedText>
-              </View>
-            )}
+            ))}
           </View>
         </View>
       </View>

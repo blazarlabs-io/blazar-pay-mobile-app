@@ -2,20 +2,32 @@ import { useWalletRegistration } from "@/hooks/useWalletRegistration";
 import { db } from "@/lib/firebase/client";
 import { getAdaUsdTicker, getBtcUsdTicker } from "@/services/coinwatch/client";
 import { doc, onSnapshot } from "firebase/firestore";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "./authContext";
 import { USERS } from "@/lib/firebase/services/constants";
 import { ASSET_UNITS } from "@/constants/assetUnits";
 import { Transaction } from "@/types/db";
+import { getDeposit, queryFunds } from "@/services/api";
+import { Deposit, depositTimeline } from "@/services/deposit-flow";
+import { ASSETS, AssetUnit, formatBaseUnits } from "@/types/payment-contract";
 
 export type CurrencyType = "ADA" | "USDM" | "WBTC";
+
+// query-funds sends quantities as JSON numbers or strings; keep them as base-unit strings
+const strings = (r: Record<string, number | string> = {}) =>
+  Object.fromEntries(Object.entries(r).map(([unit, qty]) => [unit, String(qty)]));
 
 interface ContextInterface {
   isWalletRegistered: boolean;
   adminWalletAddress: string;
   adaAddress: string;
-  adaBalance: number;
+  adaBalance: number; // ada/usdm/wbtc balances = payable in L2, display units
   getBalance: () => any;
+  balanceError: string | null; // last GET /query-funds failure, null after a successful load
+  payableInL2: Record<string, string>; // base units: the largest single payment per asset (one payment spends one funds UTxO)
+  totalInL2: Record<string, string>; // base units: everything in L2, lovelace incl. locked min-ADA
+  l1Balances: Record<string, string>; // base units on L1, not payable
   adaConversionRate: number;
   usdmBalance: number;
   usdmConversionRate: number;
@@ -24,6 +36,8 @@ interface ContextInterface {
   selectedCurrency: CurrencyType;
   updateSelectedCurrency: (currency: CurrencyType) => void;
   transactions: Transaction[];
+  btcDeposit: Deposit | null; // last BTC deposit started on this device (the backend has no list endpoint)
+  trackBtcDeposit: (d: Deposit | null) => void;
 }
 
 const WalletContext = createContext<ContextInterface>({
@@ -33,6 +47,10 @@ const WalletContext = createContext<ContextInterface>({
   adaBalance: 0.0,
   wbtcBalance: 0.0,
   getBalance: () => {},
+  balanceError: null,
+  payableInL2: {},
+  totalInL2: {},
+  l1Balances: {},
   adaConversionRate: 0.35,
   wbtcConversionRate: 1.0,
   usdmBalance: 0.0,
@@ -40,6 +58,8 @@ const WalletContext = createContext<ContextInterface>({
   selectedCurrency: "ADA",
   updateSelectedCurrency: () => {},
   transactions: [],
+  btcDeposit: null,
+  trackBtcDeposit: () => {},
 });
 
 export const useWallet = () => {
@@ -54,45 +74,71 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const { isRegistered } = useWalletRegistration();
   const { user } = useAuth();
 
-  const [isWalletRegistered, setIsWalletRegistered] = useState<boolean>(false);
   const [adminWalletAddress, setAdminWalletAddress] = useState<string>(
     process.env.EXPO_PUBLIC_ADMIN_WALLET_ADDRESS as string
   );
   const [adaAddress, setAdaAddress] = useState<string>(
     process.env.EXPO_PUBLIC_ADA_WALLET_ADDRESS as string
   );
-  const [adaBalance, setAdaBalance] = useState<number>(640.0);
+  // M3: the payer address comes from the build config, so a Firestore wallet doc is not required
+  const isWalletRegistered = isRegistered || !!adaAddress;
+  const [adaBalance, setAdaBalance] = useState<number>(0.0);
   const [usdmBalance, setUsdmBalance] = useState<number>(0.0);
   const [wbtcBalance, setWbtcBalance] = useState<number>(0.0);
   const [selectedCurrency, setSelectedCurrency] = useState<CurrencyType>("ADA");
-  const [adaConversionRate, setAdaConversionRate] = useState<number>(0.35);
+  const [l1Balances, setL1Balances] = useState<Record<string, string>>({});
+  const [payableInL2, setPayableInL2] = useState<Record<string, string>>({});
+  const [totalInL2, setTotalInL2] = useState<Record<string, string>>({});
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [adaConversionRate, setAdaConversionRate] = useState<number>(0);
   const [usdmConversionRate, setUsdmConversionRate] = useState<number>(1.0);
-  const [wbtcConversionRate, setWbtcConversionRate] = useState<number>(1.0);
+  const [wbtcConversionRate, setWbtcConversionRate] = useState<number>(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [btcDeposit, setBtcDeposit] = useState<Deposit | null>(null);
+  const btcDepositRef = useRef<Deposit | null>(null); // latest value for callbacks held by intervals
+  const depositKey = user ? `btcDeposit:${user.uid}` : null;
+
+  const trackBtcDeposit = (d: Deposit | null) => {
+    const prev = btcDepositRef.current;
+    const next = d && prev?.depositId === d.depositId ? { ...prev, ...d } : d;
+    btcDepositRef.current = next;
+    setBtcDeposit(next);
+    if (depositKey) {
+      (next ? AsyncStorage.setItem(depositKey, JSON.stringify(next)) : AsyncStorage.removeItem(depositKey)).catch(console.log);
+    }
+  };
 
   const updateSelectedCurrency = (currency: CurrencyType) => {
     setSelectedCurrency(currency);
   };
 
-  const getBalance = async (): Promise<any> => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const ngrokUrl = "http://192.168.18.4:5000";
-        const res = await fetch(
-          `${ngrokUrl}/query-funds?address=${adaAddress}`
-        );
-        const data = await res.json();
-        resolve(data);
-      } catch (error) {
-        reject(error);
-      }
-    });
+  const getBalance = async (): Promise<void> => {
+    if (!adaAddress || !user) return;
+    try {
+      console.info("[GET-BALANCE]", adaAddress);
+      const data = await queryFunds(adaAddress);
+      console.log("\n\n[QUERY-FUNDS]", JSON.stringify(data, null, 2), "\n\n");
+      // * Spendable = payable in L2. L1 validator funds are shown apart and never summed in.
+      const payable = data.payableInL2 ?? {};
+      // ponytail: Number() only for display and USD estimates; payments use base-unit strings
+      const display = (unit: AssetUnit) =>
+        Number(formatBaseUnits(payable[unit] ?? "0", ASSETS[unit].decimals));
+      setAdaBalance(display(ASSET_UNITS.ada));
+      setUsdmBalance(display(ASSET_UNITS.usdm));
+      setWbtcBalance(display(ASSET_UNITS.wbtc));
+      setPayableInL2(payable);
+      setTotalInL2(strings(data.totalInL2));
+      setL1Balances(strings(data.totalInL1));
+      setTransactions(() => [
+        ...data.fundsInL1.map((u) => ({ ...u, layer: "L1" as const })),
+        ...data.fundsInL2.map((u) => ({ ...u, layer: "L2" as const })),
+      ]);
+      setBalanceError(null);
+    } catch (error: any) {
+      console.log(error);
+      setBalanceError(error?.message ?? String(error)); // never show stale or zero balances as if they were real
+    }
   };
-
-  useEffect(() => {
-    setIsWalletRegistered(isRegistered);
-    console.log("isRegistered", isRegistered);
-  }, [isRegistered]);
 
   useEffect(() => {
     // * GET ADA TICKER
@@ -114,43 +160,28 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   useEffect(() => {
-    if (adaAddress) {
-      console.info("[GET-BALANCE]", adaAddress);
-      getBalance()
-        .then((data) => {
-          console.log(
-            "\n\n[QUERY-FUNDS]",
-            JSON.stringify(data, null, 2),
-            "\n\n"
-          );
-          const adaBalanceL1 = data.totalInL1[ASSET_UNITS.ada] / 1000000 || 0;
-          const usdmBalanceL1 = data.totalInL1[ASSET_UNITS.usdm] || 0;
-          const wbtcBalanceL1 = data.totalInL1[ASSET_UNITS.wbtc] || 0;
-          const adaBalanceL2 = data.totalInL2[ASSET_UNITS.ada] / 1000000 || 0;
-          const usdmBalanceL2 = data.totalInL2[ASSET_UNITS.usdm] || 0;
-          const wbtcBalanceL2 = data.totalInL2[ASSET_UNITS.wbtc] || 0;
+    getBalance();
+  }, [adaAddress, user]);
 
-          setUsdmBalance(() => usdmBalanceL1 + usdmBalanceL2);
-          setAdaBalance(() => adaBalanceL1 + adaBalanceL2);
-          setWbtcBalance(() => wbtcBalanceL1 + wbtcBalanceL2);
+  // * Restore the tracked BTC deposit for this user and refresh it once
+  useEffect(() => {
+    btcDepositRef.current = null;
+    setBtcDeposit(null);
+    if (!depositKey) return;
+    AsyncStorage.getItem(depositKey)
+      .then((s) => {
+        const d: Deposit | null = s ? JSON.parse(s) : null;
+        btcDepositRef.current = d;
+        setBtcDeposit(d);
+        if (d && !depositTimeline(d).final) return getDeposit(d.depositId).then(trackBtcDeposit);
+      })
+      .catch(console.log);
+  }, [depositKey]);
 
-          setTransactions(() => [...data.fundsInL1, ...data.fundsInL2]);
-
-          console.log("\n\n=================================");
-          console.log("[ADA-BALANCE]", adaBalanceL1 + adaBalanceL2);
-          console.log("[USDM-BALANCE]", usdmBalanceL1 + usdmBalanceL2);
-          console.log(
-            "[WBTC-BALANCE]",
-            (wbtcBalanceL1 + wbtcBalanceL2) / 100000000
-          );
-
-          console.log("=================================\n\n");
-        })
-        .catch((error) => {
-          console.log(error);
-        });
-    }
-  }, [adaAddress]);
+  // * A deposit that became available changes the payable balance
+  useEffect(() => {
+    if (btcDeposit?.state === "available") getBalance();
+  }, [btcDeposit?.state]);
 
   useEffect(() => {
     let unsubsUserData: any = null;
@@ -175,7 +206,11 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         adminWalletAddress,
         adaAddress,
         adaBalance,
-        getBalance: () => {},
+        getBalance,
+        balanceError,
+        payableInL2,
+        totalInL2,
+        l1Balances,
         adaConversionRate,
         usdmBalance,
         usdmConversionRate,
@@ -184,6 +219,8 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         selectedCurrency,
         updateSelectedCurrency,
         transactions,
+        btcDeposit,
+        trackBtcDeposit,
       }}
     >
       {children}

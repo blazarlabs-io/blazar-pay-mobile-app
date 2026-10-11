@@ -1,33 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
-import { Image, Modal, useColorScheme, View, Text } from "react-native";
+import { ActivityIndicator, Image, Modal, useColorScheme, View, Text } from "react-native";
 import { BleClient } from "../../services/ble-client";
 import { Button, Icons, SafeLayout, ThemedText, ThemedView } from "../core";
 import { useWalletRegistration } from "@/hooks/useWalletRegistration";
 import { Colors } from "@/constants/Colors";
 import { useRouter } from "expo-router";
 import { useWallet } from "@/context/walletContext";
-import { ASSET_UNITS } from "@/constants/assetUnits";
+import { authorize, getPayment } from "@/services/api";
+import { findMismatch, payAndWait } from "@/services/payment-flow";
+import { ASSETS, formatBaseUnits, type Payment } from "@/types/payment-contract";
 
-const DEVICE_NAME = "Hydra TERM";
-const SERVICE_UUID = "1d4ddcb2-279d-42e2-a95a-274352a25248";
-const VALUE1_CHARACTERISTIC_UUID = "a781af9a-9a04-4422-9d78-9014497ccdc0";
-const VALUE2_CHARACTERISTIC_UUID = "61b64163-35fa-438a-810c-018d1a719667";
-const VALUE3_CHARACTERISTIC_UUID = "52f34145-0363-4f4e-9fab-a133e8e5b0b1";
-const WRITE1_CHARACTERISTIC_UUID = "9b16159d-7c3e-4ae6-990b-0d34f22389bb";
+type Step =
+  | { step: "scanning" }
+  | { step: "ready" | "paying"; payment: Payment }
+  | { step: "error"; message: string };
 
 export const NfcScreen = () => {
-  const { isWalletRegistered, adaAddress } = useWallet();
+  const { isWalletRegistered } = useWallet();
   const router = useRouter();
   const [modalVisible, setModalVisible] =
     useState<boolean>(!isWalletRegistered);
   const theme = useColorScheme() ?? "light";
-  const [paymentRequest, setPaymentRequest] = useState<{
-    address: string;
-    amount: number;
-    assetUnit: string;
-  } | null>(null);
-  const [device, setDevice] = useState<any>(null);
-  const [bleClient, setBleClient] = useState<BleClient | null>(null);
+  const [view, setView] = useState<Step>({ step: "scanning" });
+  const [bleClient] = useState(() => new BleClient());
 
   const handleCloseModal = () => {
     setModalVisible(false);
@@ -38,85 +33,47 @@ export const NfcScreen = () => {
     router.push("/wallet-registration/register");
   };
 
-  const handleSendPayment = useCallback(async () => {
-    console.log(
-      "[SENDING PAMENT...]",
-      SERVICE_UUID,
-      VALUE1_CHARACTERISTIC_UUID,
-      device,
-      bleClient
+  // * Read the terminal, then show what the backend says for that paymentId
+  const startScan = useCallback(async () => {
+    setView({ step: "scanning" });
+    try {
+      if (!(await bleClient.requestPermissions())) {
+        throw new Error("Bluetooth permission was not granted.");
+      }
+      const values = await bleClient.scan();
+      const payment = await getPayment(values.value4);
+      const mismatch = findMismatch(payment, values);
+      if (mismatch) {
+        throw new Error(
+          `The terminal and the backend disagree on the ${mismatch}. Payment aborted.`
+        );
+      }
+      setView({ step: "ready", payment });
+    } catch (error: any) {
+      console.log(error);
+      setView({ step: "error", message: error?.message ?? String(error) });
+    }
+  }, [bleClient]);
+
+  const handleSendPayment = async (payment: Payment) => {
+    setView({ step: "paying", payment });
+    const outcome = await payAndWait(
+      { authorize, getPayment },
+      payment.paymentId
     );
-
-    bleClient?.writeToCharacteristic(
-      device,
-      SERVICE_UUID,
-      WRITE1_CHARACTERISTIC_UUID,
-      adaAddress as string
-    );
-
-    router.push("/payment-success");
-
-    // try {
-    //   const url = `${process.env.EXPO_PUBLIC_TXPIPE_API_URL?.toString()}/query-funds?address=${paymentRequest?.address.toString()}`;
-    //   console.log("[URL]", url);
-    //   const getFundsRes = await fetch(url, {
-    //     method: "GET",
-    //     headers: {
-    //       "Content-Type": "application/json",
-    //     },
-    //   });
-    //   console.log("[getFundsRes]", getFundsRes);
-    //   const hash = "";
-    //   const index = 0;
-    //   const payload = {
-    //     merchant_address: paymentRequest?.address,
-    //     funds_utxo_ref: {
-    //       // The output reference of the user's funds UTxO within the Hydra Head.
-    //       hash: hash,
-    //       index: index,
-    //     },
-    //     amount: (paymentRequest?.amount as number) * 1000000, // The amount of ADA (in Lovelace) to pay the merchant
-    //     signature: "",
-    //   };
-    // } catch (error) {
-    //   console.log(error);
-    // }
-  }, [paymentRequest, device, bleClient, adaAddress]);
+    if (!outcome.ok) {
+      setView({ step: "error", message: outcome.message });
+      return;
+    }
+    router.push({
+      pathname: "/payment-success",
+      params: { paymentId: outcome.payment.paymentId }, // the screen re-reads it from the backend
+    });
+  };
 
   useEffect(() => {
-    const ble = new BleClient();
-    setBleClient(ble);
-    ble
-      .requestPermissions()
-      .then((granted) => {
-        console.log("granted:", granted);
-        if (granted) {
-          ble
-            .scan(DEVICE_NAME, {
-              SERVICE_UUID,
-              VALUE1_CHARACTERISTIC_UUID,
-              VALUE2_CHARACTERISTIC_UUID,
-              VALUE3_CHARACTERISTIC_UUID,
-            })
-            .then((response) => {
-              console.log("\n [CHARACTERISTICS VALUES]", response);
-              const pr = {
-                address: response.value1,
-                amount: response.value2,
-                assetUnit: response.value3,
-              };
-              setPaymentRequest(() => pr);
-              setDevice(() => response.device);
-            })
-            .catch((error) => {
-              console.log(error);
-            });
-        }
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-  }, []);
+    startScan();
+  }, [startScan]);
 
   return (
     <SafeLayout>
@@ -167,17 +124,19 @@ export const NfcScreen = () => {
           className="h-[30%] w-[55%]"
           resizeMode="contain"
         />
-        {!paymentRequest ? (
+        {view.step === "scanning" && (
           <>
             <ThemedText type="subtitle" className="max-w-[70%] text-center">
               Buy fast and safely with our contactless payments.
             </ThemedText>
             <ThemedText type="default" className="mt-6 max-w-[90%] text-center">
-              Activating our contactless system allows you to pay with your
-              phone in any hydrapay compatible terminal.
+              Hold your phone near a HydraPay terminal. The app finds it over
+              Bluetooth (BLE).
             </ThemedText>
+            <ActivityIndicator style={{ marginTop: 24 }} size="large" />
           </>
-        ) : (
+        )}
+        {(view.step === "ready" || view.step === "paying") && (
           <>
             <View className="flex flex-col items-center justify-center gap-y-4">
               <ThemedText type="subtitle" className="max-w-[90%] text-center">
@@ -187,54 +146,49 @@ export const NfcScreen = () => {
                 type="default"
                 className="max-w-[80%] text-center opacity-50"
               >
-                {paymentRequest.address}
+                {view.payment.merchantAddress}
               </ThemedText>
-              {paymentRequest && paymentRequest.assetUnit !== undefined && (
-                <>
-                  {paymentRequest.assetUnit === ASSET_UNITS.ada && (
-                    <ThemedText
-                      type="title"
-                      className="mt-8 max-w-[70%] text-center"
-                    >
-                      ₳{paymentRequest.amount / 1000000}
-                    </ThemedText>
+              <View className="flex flex-row items-start justify-center">
+                <ThemedText
+                  type="title"
+                  className="mt-8 max-w-[70%] text-center"
+                >
+                  {formatBaseUnits(
+                    view.payment.amountBaseUnits,
+                    ASSETS[view.payment.assetUnit].decimals
                   )}
-                  {paymentRequest.assetUnit === ASSET_UNITS.usdm && (
-                    <View className="flex flex-row items-start justify-center">
-                      <ThemedText
-                        type="title"
-                        className="mt-8 max-w-[70%] text-center"
-                      >
-                        ${paymentRequest.amount}
-                      </ThemedText>
-                      <Text className="ml-2 mt-8 max-w-[70%] text-center text-[10px] font-bold opacity-50">
-                        USDM
-                      </Text>
-                    </View>
-                  )}
-                  {paymentRequest.assetUnit === ASSET_UNITS.wbtc && (
-                    <View className="flex flex-row items-start justify-center">
-                      <ThemedText
-                        type="title"
-                        className="mt-8 max-w-[70%] text-center"
-                      >
-                        ${paymentRequest.amount / 100000000}
-                      </ThemedText>
-                      <Text className="ml-2 mt-8 max-w-[70%] text-center text-[10px] font-bold opacity-50">
-                        WBTC
-                      </Text>
-                    </View>
-                  )}
-                </>
-              )}
+                </ThemedText>
+                <Text className="ml-2 mt-8 max-w-[70%] text-center text-[10px] font-bold opacity-50">
+                  {ASSETS[view.payment.assetUnit].symbol}
+                </Text>
+              </View>
             </View>
             <Button
               variant="primary"
-              label="Pay"
+              label={view.step === "paying" ? "Waiting for confirmation..." : "Pay"}
               fullWidth
               icon={null}
               className="mt-8"
-              onPress={handleSendPayment}
+              disabled={view.step === "paying"}
+              onPress={() => handleSendPayment(view.payment)}
+            />
+          </>
+        )}
+        {view.step === "error" && (
+          <>
+            <ThemedText type="subtitle" className="max-w-[90%] text-center">
+              Payment not completed
+            </ThemedText>
+            <ThemedText type="default" className="mt-6 max-w-[90%] text-center">
+              {view.message}
+            </ThemedText>
+            <Button
+              variant="primary"
+              label="Scan again"
+              fullWidth
+              icon={null}
+              className="mt-8"
+              onPress={startScan}
             />
           </>
         )}

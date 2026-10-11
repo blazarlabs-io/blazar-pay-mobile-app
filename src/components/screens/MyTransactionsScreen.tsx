@@ -1,11 +1,12 @@
-import { transactions } from "@/data/transactionsTemplate";
-import { dateOptions } from "@/utils/dateUtils";
+import { useWallet } from "@/context/walletContext";
 import { LinearGradient } from "expo-linear-gradient";
 import { FlatList, SafeAreaView, StatusBar, View } from "react-native";
-import { TransactionCard } from "../core";
+import { ThemedText, TransactionCard } from "../core";
 import { router } from "expo-router";
 
+// Same data as the Home section: the payer's funds UTxOs from GET /query-funds (not a payment history).
 export const MyTransactionsScreen = () => {
+  const { transactions } = useWallet();
   return (
     <>
       <LinearGradient
@@ -18,33 +19,29 @@ export const MyTransactionsScreen = () => {
       >
         <FlatList
           data={transactions}
+          ListEmptyComponent={
+            <ThemedText className="mt-8 text-center opacity-50">
+              No funds yet.
+            </ThemedText>
+          }
           renderItem={({ item }) => (
             <View className="mt-4">
               <TransactionCard
-                label={item.label}
-                date={item.date.toLocaleDateString("en-US", dateOptions as any)}
-                value={item.value}
-                icon={
-                  item.type === "income"
-                    ? "CurrencyDecrease"
-                    : item.type === "shop"
-                      ? "ShoppingBag"
-                      : "Exchange"
-                }
-                bgColor={
-                  item.type === "income"
-                    ? "primary"
-                    : item.type === "shop"
-                      ? "secondary"
-                      : "warning"
-                }
+                data={item}
                 onPress={() =>
-                  router.push(`/my-transactions/detail/${item.id}`)
+                  router.push(`/my-transactions/detail/${item.txHash}`)
                 }
               />
             </View>
           )}
-          keyExtractor={(item) => item.id}
+          ListFooterComponent={
+            transactions.length > 0 ? (
+              <ThemedText className="mt-4 text-xs opacity-50">
+                ADA in a funds UTxO includes its locked min-ADA deposit, which is not payable.
+              </ThemedText>
+            ) : null
+          }
+          keyExtractor={(item) => `${item.txHash}#${item.outputIndex}`}
         />
       </SafeAreaView>
     </>

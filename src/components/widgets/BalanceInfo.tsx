@@ -1,8 +1,16 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { router } from "expo-router";
 import { Icons } from "../core";
 import { useWallet } from "@/context/walletContext";
 import { useEffect } from "react";
+import { ASSETS, AssetUnit, formatBaseUnits } from "@/types/payment-contract";
+import { ASSET_UNITS } from "@/constants/assetUnits";
+import { DEPOSIT_LABEL, inProgressSats } from "@/services/deposit-flow";
+import { assetLine } from "@/utils/assets";
+
+// Price feed may be unavailable (no API key / offline): show a dash instead of $NaN.
+const usd = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "—");
 
 export const BalanceInfo = () => {
   const {
@@ -12,7 +20,16 @@ export const BalanceInfo = () => {
     adaConversionRate,
     usdmConversionRate,
     wbtcConversionRate,
+    l1Balances,
+    payableInL2,
+    totalInL2,
+    balanceError,
+    getBalance,
+    btcDeposit,
   } = useWallet();
+  // exact payable amount, same formatting as every other screen (no toFixed rounding)
+  const payable = (unit: AssetUnit) => formatBaseUnits(payableInL2[unit] ?? "0", ASSETS[unit].decimals);
+  const pendingSats = inProgressSats(btcDeposit);
 
   useEffect(() => {
     console.log("adaBalance", adaBalance);
@@ -21,7 +38,7 @@ export const BalanceInfo = () => {
     console.log("adaConversionRate", adaConversionRate);
     console.log("usdmConversionRate", usdmConversionRate);
     console.log("wbtcConversionRate", wbtcConversionRate);
-    console.log("usdFromWbtc", (wbtcBalance / 100000000) * wbtcConversionRate);
+    console.log("usdFromWbtc", wbtcBalance * wbtcConversionRate);
   }, [
     adaBalance,
     usdmBalance,
@@ -31,17 +48,18 @@ export const BalanceInfo = () => {
     wbtcConversionRate,
   ]);
   return (
+    <>
     <View className="relative h-[200px] rounded-[32px]">
       <LinearGradient
         className="absolute left-0 right-0 top-0 h-[200px] rounded-[32px] border"
         colors={["#FFD5E9", "#8CE4F3"]}
       />
       <View className="flex flex-row items-center justify-start gap-x-2 px-6 pt-6">
-        <Text className="text-5xl font-black">{`$${(adaBalance * adaConversionRate + usdmBalance * usdmConversionRate + (wbtcBalance / 100000000) * wbtcConversionRate).toFixed(2)}`}</Text>
+        <Text className="text-5xl font-black">{`$${usd(adaBalance * adaConversionRate + usdmBalance * usdmConversionRate + wbtcBalance * wbtcConversionRate)}`}</Text>
         <Text className="text-base font-black opacity-50">USD</Text>
       </View>
       <View className="px-6">
-        <Text className="text-base">Current Balance</Text>
+        <Text className="text-base">Payable in one payment (Hydra L2)</Text>
       </View>
       <View
         style={{ flex: 1 }}
@@ -51,12 +69,12 @@ export const BalanceInfo = () => {
         <View className="flex max-w-fit flex-col items-start justify-center">
           <View className="flex flex-row items-center justify-start gap-x-1 pt-6">
             <Icons.AdaIcon />
-            <Text className="text-base font-bold">{adaBalance.toFixed(2)}</Text>
+            <Text className="text-base font-bold">{payable(ASSET_UNITS.ada)}</Text>
             {/* <Text className="pl-1 text-xs font-black opacity-50">ADA</Text> */}
           </View>
           <View className="flex flex-row items-center justify-start gap-x-1 opacity-50">
             <Text className="text-xs font-normal">
-              ${(adaBalance * adaConversionRate).toFixed(2)}
+              ${usd(adaBalance * adaConversionRate)}
             </Text>
             <Text className="text-xs font-bold">USD</Text>
           </View>
@@ -66,13 +84,13 @@ export const BalanceInfo = () => {
           <View className="flex flex-row items-center justify-start gap-x-1 pt-6">
             <Icons.UsdmIcon />
             <Text className="text-base font-bold">
-              {usdmBalance.toFixed(2)}
+              {payable(ASSET_UNITS.usdm)}
             </Text>
             {/* <Text className="pl-1 text-xs font-black opacity-50">USDM</Text> */}
           </View>
           <View className="flex flex-row items-center justify-end gap-x-1 opacity-50">
             <Text className="text-xs font-normal">
-              ${(usdmBalance * usdmConversionRate).toFixed(2)}
+              ${usd(usdmBalance * usdmConversionRate)}
             </Text>
             <Text className="text-xs font-bold">USD</Text>
           </View>
@@ -82,17 +100,40 @@ export const BalanceInfo = () => {
           <View className="flex flex-row items-center justify-start gap-x-1 pt-6">
             <Icons.Wbtc />
             <Text className="text-base font-bold">
-              {(wbtcBalance / 100000000).toFixed(6)}
+              {payable(ASSET_UNITS.wbtc)}
             </Text>
           </View>
           <View className="flex flex-row items-center justify-end gap-x-1 opacity-50">
             <Text className="text-xs font-normal">
-              ${((wbtcBalance / 100000000) * wbtcConversionRate).toFixed(2)}
+              ${usd(wbtcBalance * wbtcConversionRate)}
             </Text>
             <Text className="text-xs font-bold">USD</Text>
           </View>
         </View>
       </View>
     </View>
+    {!!balanceError && (
+      <TouchableOpacity onPress={getBalance} className="mt-2 px-6">
+        <Text className="text-xs font-bold text-red-600">{`Balances could not be loaded (${balanceError}). Tap to retry.`}</Text>
+      </TouchableOpacity>
+    )}
+    {/* * One payment spends one funds UTxO: the total can exceed what a single payment can use */}
+    <Text className="mt-2 px-6 text-xs opacity-50">
+      {`In Hydra L2 in total: ${assetLine(totalInL2)} (ADA incl. locked min-ADA)`}
+    </Text>
+    {/* * L1 funds are not payable until committed to the Hydra head */}
+    <Text className="mt-1 px-6 text-xs opacity-50">
+      {`On L1, not payable yet: ${assetLine(l1Balances)}`}
+    </Text>
+    {/* * BTC on its way through the bridge: never part of the payable balance above */}
+    {pendingSats && btcDeposit && (
+      <Text className="mt-1 px-6 text-xs opacity-50">
+        {`BTC deposit in progress, not payable yet: ${formatBaseUnits(pendingSats, ASSETS[ASSET_UNITS.wbtc].decimals)} BTC (${DEPOSIT_LABEL[btcDeposit.state] ?? btcDeposit.state})`}
+      </Text>
+    )}
+    <TouchableOpacity onPress={() => router.push("/deposit-btc")} className="mt-2 px-6">
+      <Text className="text-sm font-bold underline">Deposit BTC (testnet bridge)</Text>
+    </TouchableOpacity>
+    </>
   );
 };

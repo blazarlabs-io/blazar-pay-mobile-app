@@ -1,6 +1,5 @@
 import {
   Button,
-  GoogleIcon,
   Icons,
   Input,
   SafeLayout,
@@ -94,20 +93,7 @@ export const GetStartedScreen = () => {
                 resizeMode="contain"
               />
             </View>
-            <View className="flex w-full items-center justify-center py-4">
-              <Button
-                label="Continue with Google"
-                variant="outline"
-                icon={GoogleIcon}
-              />
-            </View>
-            <View className="flex w-full flex-row items-center justify-center gap-x-2">
-              <View className="h-[1px] grow bg-gray-300" />
-              <ThemedText type="default" className="opacity-70">
-                Or continue with
-              </ThemedText>
-              <View className="h-[1px] grow bg-gray-300" />
-            </View>
+            {/* M3 test build: email/password only; Google, sign-up and password reset have no handler */}
             <View className="flex w-full items-center justify-center">
               <View className="w-full">
                 <Input
@@ -126,21 +112,12 @@ export const GetStartedScreen = () => {
                 />
               </View>
             </View>
-            <View>
-              <Button label="Forgot Password?" variant="ghost" />
-            </View>
             <View className="mt-4 flex w-full items-center justify-center">
               <Button
                 label="Continue"
                 variant="primary"
                 onPress={() => handleSignIn()}
               />
-            </View>
-            <View className="flex flex-row items-center justify-center">
-              <ThemedText type="default" className="opacity-70">
-                Don't have an account?
-              </ThemedText>
-              <Button label="Sign up" variant="ghost" fullWidth={false} />
             </View>
           </View>
         </View>
