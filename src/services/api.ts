@@ -16,7 +16,7 @@ export type QueryFunds = {
   payableInL2?: Record<string, string>; // base units; absent on a backend without the M3 change
 };
 
-async function call<T>(path: string, method: "GET" | "POST" = "GET", body: object = {}): Promise<T> {
+async function call<T>(path: string, method: "GET" | "POST" | "PUT" = "GET", body: object = {}): Promise<T> {
   if (!API_URL) throw new Error("This build has no backend configured (EXPO_PUBLIC_API_URL is missing).");
   const user = auth.currentUser;
   if (!user) throw new Error("You are signed out. Sign in to pay.");
@@ -26,7 +26,7 @@ async function call<T>(path: string, method: "GET" | "POST" = "GET", body: objec
       Authorization: `Bearer ${await user.getIdToken()}`,
       "Content-Type": "application/json",
     },
-    body: method === "POST" ? JSON.stringify(body) : undefined,
+    body: method === "GET" ? undefined : JSON.stringify(body),
   });
   const json = await res.json().catch(() => null);
   // Errors are {"error":"CODE"}; a 422 on /deposits/:id/btc-tx also carries the updated "deposit".
@@ -53,6 +53,10 @@ export async function getTerminalPendingPayment(terminalId: string): Promise<Pay
 /** 200 = final state, 202 = submitted (keep polling GET). Repeating it for the same payer is a no-op. */
 export const authorize = (paymentId: string) =>
   call<Payment>(`/payments/${encodeURIComponent(paymentId)}/authorize`, "POST");
+
+/** Registers this phone's payment key on the signed-in user's account (same key again: no-op; another: 409). */
+export const registerPublicKey = (publicKey: string) =>
+  call<{ id: string; publicKey: string }>("/accounts/me/public-key", "PUT", { publicKey });
 
 export const queryFunds = (address: string) =>
   call<QueryFunds>(`/query-funds?address=${encodeURIComponent(address)}`);
