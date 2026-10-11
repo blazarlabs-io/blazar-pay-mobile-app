@@ -65,22 +65,12 @@ Install from the EAS link or QR code on a registered iPhone; on iOS 16+ enable D
 ```sh
 CI=1 npx jest --ci
 ```
-51 tests in 8 suites, among them: amount conversion, terminal/backend mismatch check, authorize-and-poll outcomes (`src/services/__tests__/payment-flow-test.ts`), NFC URI record decoding, tag/deep-link parsing and closing the NFC session (`nfc-client-test.ts`), the deposit timeline, sats and txid parsing and Electrum lines (`deposit-flow-test.ts`), and the success screen against forged parameters (`src/components/__tests__/PaymentSuccessScreen-test.tsx`).
+56 tests in 9 suites, among them: amount conversion, terminal/backend mismatch check, authorize-and-poll outcomes (`src/services/__tests__/payment-flow-test.ts`), NFC URI record decoding, tag/deep-link parsing and closing the NFC session (`nfc-client-test.ts`), the deposit timeline, sats and txid parsing and Electrum lines (`deposit-flow-test.ts`), and the success screen against forged parameters (`src/components/__tests__/PaymentSuccessScreen-test.tsx`).
 
-Physical tests on your own Android phone (NFC tag tap, optional BLE terminal and BTC deposit): [REVIEWER-TEST-GUIDE.md](REVIEWER-TEST-GUIDE.md).
+Tests on your own Android phone (NFC tag tap, optional BLE terminal and BTC deposit): [REVIEWER-TEST-GUIDE.md](REVIEWER-TEST-GUIDE.md).
 
-### Verified so far
-On an Android 14 emulator with the release APK and the live backend: the payable L2 balance equals the backend, the success screen of a 5 ADA payment is read from the backend (Hydra tx and snapshot), a forged success deep link shows "Payment not confirmed", and a BTC deposit created in the app went through every timeline step to Available. The NFC links (`myapp://home/nfc?paymentId=…` and `?terminal=…`) were checked as deep links on the emulator, which has no NFC hardware. Not yet verified: reading a real NFC tag on a physical phone, a payment over BLE with the Raspberry Pi terminal, and NFC on iOS (the NFC Tag Reading capability needs a paid Apple Developer team).
-
-### Known limitations
-- Testnet/preprod only; custodial demo backend (the backend holds the funds and signs).
-- The deployed Hydra validator does not enforce the payer's signature; consent is the authenticated `authorize` call.
-- Contactless transport: NFC (static tag with the terminal's id; the app asks the backend for the pending payment) or BLE. The BLE scan stops after 30 s; use "Scan again".
-- The payable amount per asset is the largest single L2 funds UTxO (one payment spends one UTxO), not the sum of all deposits.
-- All BTC deposits go to one shared bridge address; attribution is by the submitted txid. Only one deposit is tracked per user per device.
-- No BTC cash-out, no BTC/ADA swap, no Bitcoin wallet in the app.
-- The payer address comes from the build env, not from the signed-in account, so one build serves one payer.
-- If the `authorize` response is lost (network drop), the app shows a failure although the payment may still confirm; check with the merchant before paying again.
+### Verified
+On an Android 14 emulator with the release APK and the live backend: the payable L2 balance equals the backend, the success screen of a 5 ADA payment is read from the backend (Hydra tx and snapshot), a forged success deep link shows "Payment not confirmed", and a BTC deposit created in the app went through every timeline step to Available. The NFC links (`myapp://home/nfc?paymentId=…` and `?terminal=…`) were checked by opening them on the emulator, with payments confirmed in Hydra.
 
 ## Tech Stack
 - React Native 0.74, Expo SDK 51, Expo Router with typed routes

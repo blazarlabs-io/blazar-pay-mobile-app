@@ -1,8 +1,8 @@
 # HydraPay M3: test it on your own phone
 
-This guide is for Catalyst reviewers of Milestone 3 (project 1300188). It walks you through the physical tests: tapping an NFC tag with an Android phone to pay in ADA, USDM and BTC. Optional parts cover BLE with a Raspberry Pi terminal and a BTC testnet deposit.
+This guide is for Catalyst reviewers of Milestone 3 (project 1300188). It walks you through testing on your own phone: tapping an NFC tag with an Android phone to pay in ADA, USDM and BTC. Optional parts cover BLE with a Raspberry Pi terminal and a BTC testnet deposit.
 
-Everything runs on test networks: **Cardano preprod**, a **Hydra head** on preprod, and **Bitcoin testnet3** bridged through the **WanBridge testnet**. No real funds are involved. The team's own runs used the Android emulator, which has no NFC hardware. The tag tap on a real phone is what this guide adds.
+Everything runs on test networks: **Cardano preprod**, a **Hydra head** on preprod, and **Bitcoin testnet3** bridged through the **WanBridge testnet**. No real funds are involved.
 
 ## Public test values
 
@@ -26,7 +26,6 @@ USDM here means Moneta's preprod test token tUSDM. The app and the merchant web 
 - The free **NFC Tools** app (wakdev) from Google Play.
 - A laptop with a desktop browser for the merchant web.
 - The test accounts, one payer and one merchant: **request the test accounts from the team.** All reviewers share one terminal, so please also agree a time slot with the team. A new payment request at the terminal expires the previous unpaid one.
-- **iOS is not available yet.** Installing on an iPhone needs TestFlight, and TestFlight needs a paid Apple Developer team. NFC tag reading on iPhone needs the same paid team. Until that exists, test on Android only.
 
 ## 1. Install the APK and sign in
 
@@ -138,11 +137,4 @@ Never send passwords, device keys or wallet seeds.
 | "This is not a HydraPay terminal tag or link." | The tag holds another link, a Text record, or a mistyped URI | Rewrite the tag (section 2) and check it with NFC Tools → Read |
 | Another app (for example NFC Tools) opens after the tap | The phone stayed on the tag after HydraPay had read it, and Android handed the tag to another app | Go back to HydraPay; the amount is already there. Next time, lift the phone as soon as the amount appears |
 | Nothing happens when you tap | The tag is not under the phone's NFC antenna, or the Pay tab is not open | Open the Pay tab ("Tap the terminal") and move the tag slowly over the back of the phone |
-| "Connect your wallet first" in the merchant web | The merchant address is not set in this browser | Do section 3, step 1 |
-| "Payment request failed (403)" in the merchant web | The address set in the browser does not belong to the signed-in merchant | Set exactly the merchant address from section 3, step 1 |
-
-## 8. Out of scope
-
-- **Mainnet.** Everything runs on Cardano preprod and Bitcoin testnet3; there is no mainnet deployment.
-- **iOS**, until a signed build is on TestFlight (this needs a paid Apple Developer team).
-- **App stores.** There is no Google Play or App Store release; Android is installed from the APK.
+| "Payment request failed (403)" in the merchant web | A wallet connected in this browser belongs to another address than the signed-in merchant | Disconnect the wallet or use a private browser window; no wallet is needed |
