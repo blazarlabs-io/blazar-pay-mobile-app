@@ -52,7 +52,7 @@ describe("utxoAssets", () => {
       utxoAssets({
         [CONTROL_TOKEN]: 1,
         [BTC]: 29940,
-        "77484e67c1ed6c96f55b89206cb5d6caae9a09a0bd473bba817929fe5553444d": "2500000",
+        "e675b46e4d2242c991a8932a99db3044e80515ae14b4c4ccf6b3f4c90014df10745553444d": "2500000",
         lovelace: 3142150,
         ["ff".repeat(28)]: 7,
       })

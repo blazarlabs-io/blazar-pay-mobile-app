@@ -1,7 +1,7 @@
 import { findMismatch, payAndWait } from "@/services/payment-flow";
 import { ASSETS, AssetUnit, formatBaseUnits, Payment, toBaseUnits } from "@/types/payment-contract";
 
-const USDM: AssetUnit = "77484e67c1ed6c96f55b89206cb5d6caae9a09a0bd473bba817929fe5553444d";
+const USDM: AssetUnit = "e675b46e4d2242c991a8932a99db3044e80515ae14b4c4ccf6b3f4c90014df10745553444d";
 const TX = "a".repeat(64);
 
 const payment = (over: Partial<Payment> = {}): Payment => ({
