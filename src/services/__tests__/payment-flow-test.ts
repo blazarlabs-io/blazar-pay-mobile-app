@@ -1,3 +1,7 @@
+jest.mock("expo-secure-store", () => ({ WHEN_UNLOCKED_THIS_DEVICE_ONLY: 6 }));
+jest.mock("expo-crypto", () => ({ getRandomBytes: jest.fn() }));
+import { deviceKey } from "@/services/device-key";
+import { payInfoCbor } from "@/services/pay-message";
 import { findMismatch, payAndWait } from "@/services/payment-flow";
 import { ASSETS, AssetUnit, formatBaseUnits, Payment, toBaseUnits } from "@/types/payment-contract";
 
@@ -74,23 +78,49 @@ describe("findMismatch", () => {
 });
 
 describe("payAndWait", () => {
+  // The payment the phone shows (a real base address, since the phone encodes it), the funds UTxO the
+  // backend proposes and the test phone key (seed 01×32): the golden vectors of pay-message-test.ts.
+  const MERCHANT =
+    "addr_test1qrs7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rcg0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8s7rc0pu8sxahxqw";
+  const FUNDS = `${"11".repeat(32)}#0`;
+  const ADA_SIG =
+    "722aea99e109cc990a416a8b84a6ead4a1568c5dbebb4755b52c56382056aa7d1f8b6ba42e42526ea97e0281145102b813229077bfa376888f967e477f688a04";
+  const shown = payment({ merchantAddress: MERCHANT, assetUnit: "lovelace", decimals: 6, amountBaseUnits: "5000000" });
+  const testKey = () => {
+    const items = new Map<string, string>();
+    return deviceKey(
+      "uid-test",
+      { getItemAsync: async (k) => items.get(k) ?? null, setItemAsync: async (k, v) => void items.set(k, v) },
+      () => new Uint8Array(32).fill(1)
+    );
+  };
+  const goodPayload = async () => ({ fundsInRef: FUNDS, payInfoCbor: payInfoCbor({ ...shown, fundsInRef: FUNDS }) });
+
   // Fake clock: sleep advances time, so timeouts are deterministic.
-  const run = (authorize: () => Promise<Payment>, polls: (Payment | Error)[], timeoutMs = 10_000) => {
+  const run = (
+    authorize: () => Promise<Payment>,
+    polls: (Payment | Error)[],
+    timeoutMs = 10_000,
+    signPayload: () => Promise<{ fundsInRef: string; payInfoCbor: string }> = goodPayload
+  ) => {
     let t = 0;
     const getPayment = jest.fn(async () => {
       const next = polls.shift() ?? payment({ state: "submitted" });
       if (next instanceof Error) throw next;
       return next;
     });
-    const promise = payAndWait({ authorize: jest.fn(authorize), getPayment }, "id", {
-      intervalMs: 1000,
-      timeoutMs,
-      sleep: async (ms) => {
-        t += ms;
-      },
-      now: () => t,
-    });
-    return { promise, getPayment };
+    const authorizeMock = jest.fn(authorize);
+    const promise = testKey().then((key) =>
+      payAndWait({ signPayload: jest.fn(signPayload), authorize: authorizeMock, getPayment }, key, shown, {
+        intervalMs: 1000,
+        timeoutMs,
+        sleep: async (ms) => {
+          t += ms;
+        },
+        now: () => t,
+      })
+    );
+    return { promise, getPayment, authorize: authorizeMock };
   };
 
   it("succeeds only when the backend reports confirmed", async () => {
@@ -140,5 +170,27 @@ describe("payAndWait", () => {
     expect(outcome.ok).toBe(false);
     expect(outcome.ok === false && outcome.message).toMatch(/not confirmed after 5 s \(last state: submitted\)/);
     expect(getPayment).toHaveBeenCalledTimes(5);
+  });
+
+  it("signs exactly the bytes it built from the shown payment, with the proposed funds UTxO", async () => {
+    const { promise, authorize } = run(async () => payment({ state: "confirmed", hydraTxId: TX }), []);
+    expect((await promise).ok).toBe(true);
+    expect(authorize).toHaveBeenCalledWith(shown.paymentId, { fundsInRef: FUNDS, signature: ADA_SIG });
+  });
+
+  it("refuses to sign when the server asks for other bytes", async () => {
+    const { promise, authorize } = run(async () => payment({ state: "confirmed" }), [], 10_000, async () => ({
+      fundsInRef: FUNDS,
+      payInfoCbor: payInfoCbor({ ...shown, amountBaseUnits: "5000001", fundsInRef: FUNDS }),
+    }));
+    await expect(promise).resolves.toEqual({ ok: false, message: expect.stringMatching(/different payment data/) });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it("explains a payment key the backend does not know", async () => {
+    const { promise } = run(async () => {
+      throw new Error("Backend error 400: BAD_SIGNATURE");
+    }, []);
+    await expect(promise).resolves.toEqual({ ok: false, message: expect.stringMatching(/payment key/) });
   });
 });

@@ -7,8 +7,8 @@ import { Colors } from "@/constants/Colors";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useRoute } from "@react-navigation/native";
 import { useWallet } from "@/context/walletContext";
-import { authorize, getPayment, getTerminalPendingPayment } from "@/services/api";
-import { findMismatch, isSupportedAsset, payAndWait } from "@/services/payment-flow";
+import { authorize, currentDeviceKey, getPayment, getTerminalPendingPayment, signPayload } from "@/services/api";
+import { findMismatch, isSupportedAsset, payAndWait, type PayOutcome } from "@/services/payment-flow";
 import { cancelNfcRead, nfcStatus, readTerminalTag, toNfcTarget, type NfcTarget } from "@/services/nfc-client";
 import { ASSETS, formatBaseUnits, type Payment } from "@/types/payment-contract";
 
@@ -107,10 +107,12 @@ export const NfcScreen = () => {
   const handleSendPayment = async (payment: Payment) => {
     const show = begin({ step: "paying", payment });
     paying.current = true;
-    const outcome = await payAndWait(
-      { authorize, getPayment },
-      payment.paymentId
-    );
+    let outcome: PayOutcome;
+    try {
+      outcome = await payAndWait({ signPayload, authorize, getPayment }, await currentDeviceKey(), payment);
+    } catch (e: any) {
+      outcome = { ok: false, message: e?.message ?? String(e) }; // signed out, or the secure store failed
+    }
     paying.current = false;
     if (!outcome.ok) {
       show({ step: "error", message: outcome.message });

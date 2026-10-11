@@ -49,12 +49,14 @@ jest.mock("@/services/nfc-client", () => ({
 }));
 jest.mock("@/services/api", () => ({
   authorize: jest.fn(),
+  signPayload: jest.fn(),
+  currentDeviceKey: async () => ({ publicKeyHex: "", sign: () => "" }),
   getPayment: (id: string) => mockGetPayment(id),
   getTerminalPendingPayment: (id: string) => mockPending(id),
 }));
 jest.mock("@/services/payment-flow", () => ({
   ...jest.requireActual("@/services/payment-flow"),
-  payAndWait: (_api: unknown, id: string) => mockPayAndWait(id),
+  payAndWait: (_api: unknown, _key: unknown, p: { paymentId: string }) => mockPayAndWait(p.paymentId),
 }));
 jest.mock("@/services/ble-client", () => ({
   BleClient: class {
