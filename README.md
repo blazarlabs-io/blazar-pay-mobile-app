@@ -67,6 +67,8 @@ CI=1 npx jest --ci
 ```
 51 tests in 8 suites, among them: amount conversion, terminal/backend mismatch check, authorize-and-poll outcomes (`src/services/__tests__/payment-flow-test.ts`), NFC URI record decoding, tag/deep-link parsing and closing the NFC session (`nfc-client-test.ts`), the deposit timeline, sats and txid parsing and Electrum lines (`deposit-flow-test.ts`), and the success screen against forged parameters (`src/components/__tests__/PaymentSuccessScreen-test.tsx`).
 
+Physical tests on your own Android phone (NFC tag tap, optional BLE terminal and BTC deposit): [REVIEWER-TEST-GUIDE.md](REVIEWER-TEST-GUIDE.md).
+
 ### Verified so far
 On an Android 14 emulator with the release APK and the live backend: the payable L2 balance equals the backend, the success screen of a 5 ADA payment is read from the backend (Hydra tx and snapshot), a forged success deep link shows "Payment not confirmed", and a BTC deposit created in the app went through every timeline step to Available. The NFC links (`myapp://home/nfc?paymentId=…` and `?terminal=…`) were checked as deep links on the emulator, which has no NFC hardware. Not yet verified: reading a real NFC tag on a physical phone, a payment over BLE with the Raspberry Pi terminal, and NFC on iOS (the NFC Tag Reading capability needs a paid Apple Developer team).
 
