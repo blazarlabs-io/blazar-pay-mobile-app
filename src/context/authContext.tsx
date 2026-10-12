@@ -1,6 +1,8 @@
 import { auth } from "@/lib/firebase/client";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { createContext, useContext, useEffect, useState } from "react";
+import { deviceKey } from "@/services/device-key";
+import { registerPublicKey } from "@/services/api";
 
 interface ContextInterface {
   user: User | null;
@@ -30,6 +32,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setInitializing(false);
+      if (user) {
+        deviceKey(user.uid)
+          .then((k) => registerPublicKey(k.publicKeyHex))
+          .catch((e) => console.warn("[device-key] registration failed:", e?.message ?? e));
+      }
     });
     return unsubscribe;
   }, []);

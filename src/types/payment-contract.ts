@@ -27,7 +27,8 @@ export type PaymentError =
   | "MERCHANT_NOT_BOOTSTRAPPED"
   | "TX_INVALID"
   | "NOT_SUBMITTED"
-  | "INTERNAL";
+  | "INTERNAL"
+  | "STALE_FUNDS"; // the funds UTxO the payer signed for was spent or locked meanwhile
 
 /** Body of every /payments response. GET /payments/:id is the single source of truth for all UIs. */
 export type Payment = {

@@ -1,4 +1,6 @@
 import { ASSETS, isAssetUnit, TERMINAL_STATES, type Payment } from "@/types/payment-contract";
+import type { DeviceKey } from "@/services/device-key";
+import { payInfoCbor } from "@/services/pay-message";
 
 /** UTF-8 strings read from the terminal: value1 merchant, value2 amount (base units), value3 unit, value4 paymentId. */
 export type BleValues = { value1: string; value2: string; value3: string; value4: string };
@@ -20,14 +22,25 @@ export const isSupportedAsset = (p: Payment) =>
 export type PayOutcome = { ok: true; payment: Payment } | { ok: false; message: string };
 
 type PayApi = {
-  authorize: (paymentId: string) => Promise<Payment>;
+  signPayload: (paymentId: string) => Promise<{ fundsInRef: string; payInfoCbor: string }>;
+  authorize: (paymentId: string, consent: { fundsInRef: string; signature: string }) => Promise<Payment>;
   getPayment: (paymentId: string) => Promise<Payment>;
 };
 
-/** Authorize, then poll GET until confirmed | failed | expired. Only `ok: true` (state confirmed) means success. */
+const KEY_ERRORS: Record<string, string> = {
+  BAD_SIGNATURE: "This phone's payment key is not the one registered for your account. Contact the merchant or support.",
+  NO_PUBLIC_KEY: "This phone is not registered for payments yet. Sign out and sign in again, then retry.",
+};
+
+/**
+ * Sign, authorize, then poll GET until confirmed | failed | expired. The phone signs PayInfo built from the
+ * payment it shows and the funds UTxO the backend proposes; if the backend's bytes differ, nothing is signed.
+ * Only `ok: true` (state confirmed) means success.
+ */
 export async function payAndWait(
   api: PayApi,
-  paymentId: string,
+  key: DeviceKey,
+  payment: Payment,
   {
     intervalMs = 1000,
     timeoutMs = 120_000,
@@ -35,11 +48,19 @@ export async function payAndWait(
     now = Date.now,
   } = {}
 ): Promise<PayOutcome> {
+  const paymentId = payment.paymentId;
   let p: Payment;
   try {
-    p = await api.authorize(paymentId);
+    const { fundsInRef, payInfoCbor: fromServer } = await api.signPayload(paymentId);
+    const mine = payInfoCbor({ ...payment, fundsInRef });
+    if (mine !== fromServer) {
+      return { ok: false, message: "The server asked to sign different payment data. Nothing was signed." };
+    }
+    p = await api.authorize(paymentId, { fundsInRef, signature: key.sign(mine) });
   } catch (e: any) {
-    return { ok: false, message: e?.message ?? String(e) };
+    const message: string = e?.message ?? String(e);
+    const code = Object.keys(KEY_ERRORS).find((c) => message.includes(c));
+    return { ok: false, message: code ? KEY_ERRORS[code] : message };
   }
   const deadline = now() + timeoutMs;
   while (!TERMINAL_STATES.includes(p.state)) {
